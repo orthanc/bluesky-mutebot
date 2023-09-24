@@ -1,0 +1,35 @@
+service: bluesky-feeds
+
+provider:
+  name: aws
+  region: us-west-2
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'development'}
+  timeout: 30
+  memorySize: 1024
+  deploymentBucket:
+    name: ${ssm:deployment-artifacts-bucket}
+
+custom:
+  prune:
+    automatic: true
+    number: 3
+  customDomain:
+    domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
+    basePath: xrpc
+    certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
+    endpointType: REGIONAL
+    securityPolicy: tls_1_2
+    apiType: http
+
+	
+plugins:
+  - serverless-plugin-typescript
+  - serverless-domain-manager
+  - serverless-prune-plugin
+
+functions:
+  test:
+    handler: ./src/endpoints/test/index.handler
+    events:
+     - httpApi: GET /test
