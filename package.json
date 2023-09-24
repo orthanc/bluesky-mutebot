@@ -17,5 +17,9 @@
     "prettier": "^3.0.3",
     "ts-node": "^10.9.1",
     "typescript": "^5.2.2"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.6.16",
+    "@atproto/xrpc": "^0.3.1"
   }
 }
