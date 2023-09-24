@@ -5,10 +5,12 @@ provider:
   region: us-west-2
   runtime: nodejs18.x
   stage: ${opt:stage, 'development'}
-  timeout: 30
+  timeout: 28
   memorySize: 1024
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
+  environment:
+    PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
 
 custom:
   prune:
@@ -16,7 +18,6 @@ custom:
     number: 3
   customDomain:
     domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
-    basePath: xrpc
     certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
     endpointType: REGIONAL
     securityPolicy: tls_1_2
@@ -29,7 +30,12 @@ plugins:
   - serverless-prune-plugin
 
 functions:
-  test:
-    handler: ./src/endpoints/test/index.handler
+  did:
+    handler: ./src/endpoints/did/index.handler
     events:
-     - httpApi: GET /test
+     - httpApi: GET /.well-known/did.json
+
+  getFeedSkeleton:
+    handler: ./src/endpoints/getFeedSkeleton/index.handler
+    events:
+     - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
