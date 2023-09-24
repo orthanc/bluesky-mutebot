@@ -1,0 +1,16 @@
+{
+    "Records": [
+        {
+            "dynamodb": {
+                "NewImage": {
+                    "subscriberDid": {
+                      "S": "did:plc:crngjmsdh3zpuhmd5gtgwx6q"
+                    },
+                    "lastTriggered": {
+                      "S": "2023-09-24T07:30:03.123Z"
+                    }
+                  }
+            }
+        }
+    ]
+}
