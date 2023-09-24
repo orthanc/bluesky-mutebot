@@ -30,6 +30,7 @@
     "@atproto/did-resolver": "^0.1.0",
     "@atproto/xrpc": "^0.3.1",
     "@atproto/xrpc-server": "^0.3.1",
+    "@aws-sdk/util-dynamodb": "^3.418.0",
     "@middy/core": "^4.6.4",
     "@middy/http-header-normalizer": "^4.6.4",
     "http-errors": "^2.0.0"
