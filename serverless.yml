@@ -16,17 +16,22 @@ custom:
   prune:
     automatic: true
     number: 3
+  serverless-iam-roles-per-function:
+    defaultInherit: true
   customDomain:
     domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
     certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
     endpointType: REGIONAL
     securityPolicy: tls_1_2
     apiType: http
+  syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
+  subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
 
 	
 plugins:
   - serverless-plugin-typescript
   - serverless-domain-manager
+  - serverless-iam-roles-per-function
   - serverless-prune-plugin
 
 functions:
@@ -39,3 +44,59 @@ functions:
     handler: ./src/endpoints/getFeedSkeleton/index.handler
     events:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
+
+  syncSubscriberFollowing:
+    handler: ./src/endpoints/syncSubscriberFollowing/index.handler
+    events:	
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [SyncSubscriberQueueTable, StreamArn]
+          batchSize: 1
+          maximumRetryAttempts: 5
+          filterPatterns:
+            - eventName: [INSERT, MODIFY]
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:DeleteItem
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt SyncSubscriberQueueTable.Arn
+          - !GetAtt SubscriberFollowingTable.Arn
+
+resources:
+  Resources:
+    SyncSubscriberQueueTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.syncSubscriberQueueTable}
+        AttributeDefinitions:
+          - AttributeName: subscriberDid
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: subscriberDid
+            KeyType: HASH
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+
+    SubscriberFollowingTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.subscriberFollowingTable}
+        AttributeDefinitions:
+          - AttributeName: subscriberDid
+            AttributeType: S
+          - AttributeName: qualifier
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: subscriberDid
+            KeyType: HASH
+          - AttributeName: qualifier
+            KeyType: RANGE
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
