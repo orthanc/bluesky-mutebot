@@ -11,6 +11,8 @@ provider:
     name: ${ssm:deployment-artifacts-bucket}
   environment:
     PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
+    SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
+
 
 custom:
   prune:

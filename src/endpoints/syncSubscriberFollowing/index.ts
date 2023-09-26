@@ -3,6 +3,11 @@ import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { FollowingSet, SyncSubscriberQueueRecord } from '../../types';
 import { getBskyAgent } from '../../bluesky';
 import { BskyAgent } from '@atproto/api';
+import {
+  FollowingUpdate,
+  getSubscriberFollowingRecord,
+  saveUpdates,
+} from '../../followingStore';
 
 const getAllFollowing = async (
   agent: BskyAgent,
@@ -20,7 +25,7 @@ const getAllFollowing = async (
     });
     cursor = followersResponse.data.cursor;
     for (const following of followersResponse.data.followers) {
-      result[following.did] = { handle: following.handle, followedBy: 1 };
+      result[following.did] = { handle: following.handle };
     }
   } while (cursor != null);
 
@@ -31,8 +36,24 @@ export const rawHandler = async (
   event: SyncSubscriberQueueRecord
 ): Promise<void> => {
   const agent = await getBskyAgent();
-  const following = await getAllFollowing(agent, event.subscriberDid);
-  console.log(Object.keys(following).length);
+  const [newFollowing, existingRecord] = await Promise.all([
+    getAllFollowing(agent, event.subscriberDid),
+    getSubscriberFollowingRecord(event.subscriberDid),
+  ]);
+  const operations: Array<FollowingUpdate> = [];
+  Object.entries(newFollowing)
+    .filter(([did]) => !existingRecord.following[did])
+    .forEach(([did, rest]) =>
+      operations.push({ operation: 'add', following: { did, ...rest } })
+    );
+
+  Object.entries(existingRecord.following)
+    .filter(([did]) => !newFollowing[did])
+    .forEach(([did, rest]) =>
+      operations.push({ operation: 'remove', following: { did, ...rest } })
+    );
+
+  await saveUpdates(existingRecord, operations);
 };
 
 export const handler = middy(rawHandler).before((request) => {

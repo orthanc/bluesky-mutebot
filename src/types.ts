@@ -3,14 +3,15 @@ export type SyncSubscriberQueueRecord = {
   lastTriggered: string;
 };
 
-export type FollowingSet = Record<
-  string,
-  { handle: string; followedBy: number }
->;
+export type FollowingEntry = {
+  did: string;
+  handle: string;
+};
+export type FollowingSet = Record<string, Omit<FollowingEntry, 'did'>>;
 
 export type FollowingRecord = {
   subscriberDid: string;
-  qualifier: 'user';
+  qualifier: 'subscriber' | 'aggregate';
   following: FollowingSet;
   rev: number;
 };
