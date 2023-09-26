@@ -34,25 +34,6 @@ export const getSubscriberFollowingRecord = async (
   );
 };
 
-type AggregateFollowingRecord = Omit<FollowingRecord, 'rev' | 'following'> & {
-  following: Record<string, number>;
-};
-
-export const getAggregateFollowingRecord =
-  async (): Promise<AggregateFollowingRecord> => {
-    const result = await ddbDocClient.send(
-      new GetCommand({
-        TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
-        Key: {
-          subscriberDid: 'aggregate',
-          qualifier: 'aggregate',
-        },
-      })
-    );
-
-    return result.Item as AggregateFollowingRecord;
-  };
-
 export type FollowingUpdate = {
   operation: 'add' | 'remove';
   following: FollowingEntry;
@@ -66,8 +47,8 @@ export const saveUpdates = async (
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 100);
-    remainingOperations = remainingOperations.slice(100);
+    const batch = remainingOperations.slice(0, 99);
+    remainingOperations = remainingOperations.slice(99);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -86,26 +67,6 @@ export const saveUpdates = async (
       }
     }
 
-    const UpdateExpression =
-      'ADD ' +
-      batch
-        .map(
-          (operation, i) =>
-            `following.#did${i} ${
-              operation.operation === 'add' ? ':one' : ':negOne'
-            }`
-        )
-        .join(', ');
-    const ExpressionAttributeNames: Record<string, string> = Object.fromEntries(
-      batch.map((operation, i) => [`#did${i}`, operation.following.did])
-    );
-    const ExpressionAttributeValues: Record<string, number> =
-      Object.fromEntries(
-        batch.map((operation) =>
-          operation.operation === 'add' ? [':one', 1] : [':negOne', -1]
-        )
-      );
-
     const writeCommand: TransactWriteCommandInput = {
       TransactItems: [
         {
@@ -122,18 +83,29 @@ export const saveUpdates = async (
                 }),
           },
         },
-        {
+        ...batch.map((operation) => ({
           Update: {
             TableName,
             Key: {
               subscriberDid: 'aggregate',
-              qualifier: 'aggregate',
+              qualifier: operation.following.did,
             },
-            UpdateExpression,
-            ExpressionAttributeNames,
-            ExpressionAttributeValues,
+            ...(operation.operation === 'add'
+              ? {
+                  UpdateExpression: 'SET handle = :handle ADD following :one',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                    ':handle': operation.following.handle,
+                  },
+                }
+              : {
+                  UpdateExpression: 'ADD following :negOne',
+                  ExpressionAttributeValues: {
+                    ':negOne': -1,
+                  },
+                }),
           },
-        },
+        })),
       ],
     };
     try {
