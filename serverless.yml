@@ -67,12 +67,46 @@ functions:
     iamRoleStatements:
       - Effect: "Allow"
         Action:
-          - dynamodb:DeleteItem
           - dynamodb:GetItem
           - dynamodb:PutItem
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt SyncSubscriberQueueTable.Arn
+          - !GetAtt SubscriberFollowingTable.Arn
+  syncSubscriberFollowing-updateList:
+    handler: ./src/endpoints/syncSubscriberFollowing/updateList.handler
+    events:	
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [SubscriberFollowingTable, StreamArn]
+          batchSize: 1
+          maximumRetryAttempts: 5
+          filterPatterns:
+            - eventName: [INSERT]
+              dynamodb: 
+                NewImage:
+                  subscriberDid:
+                    S: [aggregate]
+                  followedBy:
+                    N: ["1"]
+            - eventName: [MODIFY]
+              dynamodb: 
+                NewImage:
+                  subscriberDid:
+                    S: [aggregate]
+                  followedBy:
+                    N: ["0"]
+    environment:
+      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
+      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-list-${self:provider.region}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:UpdateItem
+          - dynamodb:DeleteItem
+        Resource:
           - !GetAtt SubscriberFollowingTable.Arn
 
 resources:

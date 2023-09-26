@@ -5,7 +5,26 @@ import {
   TransactWriteCommand,
   TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
-import { FollowingEntry, FollowingRecord } from './types';
+import { FollowingEntry, FollowingSet } from './types';
+
+export type FollowingRecord = {
+  subscriberDid: string;
+  qualifier: 'subscriber' | 'aggregate';
+  following: FollowingSet;
+  rev: number;
+};
+
+export type FollowingUpdate = {
+  operation: 'add' | 'remove';
+  following: FollowingEntry;
+};
+
+export type AggregateListRecord = {
+  subscriberDid: 'aggregate';
+  qualifier: string;
+  handle: string;
+  followedBy: number;
+};
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -32,11 +51,6 @@ export const getSubscriberFollowingRecord = async (
       rev: 0,
     }
   );
-};
-
-export type FollowingUpdate = {
-  operation: 'add' | 'remove';
-  following: FollowingEntry;
 };
 
 export const saveUpdates = async (
@@ -92,14 +106,14 @@ export const saveUpdates = async (
             },
             ...(operation.operation === 'add'
               ? {
-                  UpdateExpression: 'SET handle = :handle ADD following :one',
+                  UpdateExpression: 'SET handle = :handle ADD followedBy :one',
                   ExpressionAttributeValues: {
                     ':one': 1,
                     ':handle': operation.following.handle,
                   },
                 }
               : {
-                  UpdateExpression: 'ADD following :negOne',
+                  UpdateExpression: 'ADD followedBy :negOne',
                   ExpressionAttributeValues: {
                     ':negOne': -1,
                   },
