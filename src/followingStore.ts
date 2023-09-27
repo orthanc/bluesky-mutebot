@@ -1,9 +1,11 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
   TransactWriteCommand,
   TransactWriteCommandInput,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
 import { FollowingEntry, FollowingSet } from './types';
 
@@ -24,6 +26,8 @@ export type AggregateListRecord = {
   qualifier: string;
   handle: string;
   followedBy: number;
+  listItemUri?: string;
+  listItemRid?: string;
 };
 
 const client = new DynamoDBClient({});
@@ -122,10 +126,41 @@ export const saveUpdates = async (
         })),
       ],
     };
-    try {
-      await ddbDocClient.send(new TransactWriteCommand(writeCommand));
-    } catch (e) {
-      console.log(JSON.stringify(e, undefined, 2));
-    }
+    await ddbDocClient.send(new TransactWriteCommand(writeCommand));
   }
+};
+
+export const recordListItemId = async (
+  followingDid: string,
+  listItemUri: string,
+  listItemRid: string
+) => {
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
+      Key: {
+        subscriberDid: 'aggregate',
+        qualifier: followingDid,
+      },
+      UpdateExpression:
+        'SET listItemUri = :listItemUri, listItemRid = :listItemRid',
+      ExpressionAttributeValues: {
+        ':listItemUri': listItemUri,
+        ':listItemRid': listItemRid,
+      },
+      ConditionExpression: 'attribute_exists(qualifier)',
+    })
+  );
+};
+
+export const deleteAggregateListRecord = async (followingDid: string) => {
+  await ddbDocClient.send(
+    new DeleteCommand({
+      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
+      Key: {
+        subscriberDid: 'aggregate',
+        qualifier: followingDid,
+      },
+    })
+  );
 };

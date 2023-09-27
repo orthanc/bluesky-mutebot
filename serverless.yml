@@ -12,6 +12,8 @@ provider:
   environment:
     PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
+    BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
+    BLUESKY_FOLLOWING_LIST: ${ssm:/bluesky-feeds/${self:provider.stage}/following-list}
 
 
 custom:
