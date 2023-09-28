@@ -8,10 +8,3 @@ export type FollowingEntry = {
   handle: string;
 };
 export type FollowingSet = Record<string, Omit<FollowingEntry, 'did'>>;
-
-export type FollowingRecord = {
-  subscriberDid: string;
-  qualifier: 'subscriber' | 'aggregate';
-  following: FollowingSet;
-  rev: number;
-};

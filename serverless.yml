@@ -30,6 +30,8 @@ custom:
     apiType: http
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
+  updateListQueue: ${self:service}-${self:provider.stage}-update-list
+  updateListQueueDLQ: ${self:service}-${self:provider.stage}-update-list-dlq
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
@@ -75,8 +77,9 @@ functions:
         Resource:
           - !GetAtt SyncSubscriberQueueTable.Arn
           - !GetAtt SubscriberFollowingTable.Arn
-  syncSubscriberFollowing-updateList:
-    handler: ./src/endpoints/syncSubscriberFollowing/updateList.handler
+
+  syncSubscriberFollowing-trigUpdList:
+    handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateList.handler
     events:	
       - stream:
           type: dynamodb
@@ -90,8 +93,6 @@ functions:
                 NewImage:
                   subscriberDid:
                     S: [aggregate]
-                  followedBy:
-                    N: ["1"]
             - eventName: [MODIFY]
               dynamodb: 
                 NewImage:
@@ -100,14 +101,36 @@ functions:
                   followedBy:
                     N: ["0"]
     environment:
+      UPDATE_LIST_QUEUE_URL: !Ref UpdateListQueue
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-triglist-${self:provider.region}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt SubscriberFollowingTable.Arn
+      - Effect: "Allow"
+        Action:
+          - sqs:SendMessage
+        Resource:
+          - !GetAtt UpdateListQueue.Arn
+
+  syncSubscriberFollowing-updateList:
+    handler: ./src/endpoints/syncSubscriberFollowing/updateList.handler
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [UpdateListQueue, Arn]
+          batchSize: 1
+    environment:
       BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-list-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
+          - dynamodb:GetItem
           - dynamodb:UpdateItem
-          - dynamodb:DeleteItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
 
@@ -144,3 +167,18 @@ resources:
             KeyType: RANGE
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+
+    UpdateListQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.updateListQueue}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt UpdateListQueueDLQ.Arn
+          maxReceiveCount: 5
+    
+    UpdateListQueueDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.updateListQueueDLQ}
+        RedriveAllowPolicy:
+          redrivePermission: allowAll

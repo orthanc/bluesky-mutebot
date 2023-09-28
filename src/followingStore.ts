@@ -130,6 +130,21 @@ export const saveUpdates = async (
   }
 };
 
+export const getAggregateListRecord = async (
+  followingDid: string
+): Promise<AggregateListRecord | undefined> => {
+  const result = await ddbDocClient.send(
+    new GetCommand({
+      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
+      Key: {
+        subscriberDid: 'aggregate',
+        qualifier: followingDid,
+      },
+    })
+  );
+  return result.Item as AggregateListRecord | undefined;
+};
+
 export const recordListItemId = async (
   followingDid: string,
   listItemUri: string,
@@ -153,14 +168,22 @@ export const recordListItemId = async (
   );
 };
 
-export const deleteAggregateListRecord = async (followingDid: string) => {
-  await ddbDocClient.send(
+export const deleteAggregateListRecord = async (
+  followingDid: string
+): Promise<AggregateListRecord> => {
+  const result = await ddbDocClient.send(
     new DeleteCommand({
       TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
       Key: {
         subscriberDid: 'aggregate',
         qualifier: followingDid,
       },
+      ConditionExpression: 'followedBy = :zero',
+      ExpressionAttributeValues: {
+        ':zero': 0,
+      },
+      ReturnValues: 'ALL_OLD',
     })
   );
+  return result.Attributes as AggregateListRecord;
 };

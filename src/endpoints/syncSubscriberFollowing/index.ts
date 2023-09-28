@@ -18,16 +18,16 @@ const getAllFollowing = async (
   let cursor: string | undefined = undefined;
   do {
     console.log(`Fetching with ${cursor}`);
-    const followersResponse = await agent.getFollowers({
+    const followersResponse = await agent.getFollows({
       actor,
-      limit: 5,
+      limit: 100,
       cursor,
     });
     cursor = followersResponse.data.cursor;
-    for (const following of followersResponse.data.followers) {
+    for (const following of followersResponse.data.follows) {
       result[following.did] = { handle: following.handle };
     }
-  } while (cursor != null && false);
+  } while (cursor != null);
 
   return result;
 };
