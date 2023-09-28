@@ -90,35 +90,27 @@ export const rawHandler = async (
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: [
-        {
-          post: 'at://did:plc:crngjmsdh3zpuhmd5gtgwx6q/app.bsky.feed.post/3ka3p3th2ss2c',
-        },
-        {
-          post: 'at://did:plc:crngjmsdh3zpuhmd5gtgwx6q/app.bsky.feed.post/3ka3xgyn4e62w',
-        },
-        ...response7.data.feed
-          .filter((item) => {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error
-            const postText: string | undefined = item.post.record.text;
-            return (
-              followingDids.has(item.post.author.did) &&
-              (item.reply == null ||
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                followingDids.has(item.reply?.parent?.author?.did)) &&
-              (postText == null ||
-                !postText
-                  .toLowerCase()
-                  .split(/\s+/)
-                  .some((word) =>
-                    muteWords.some((mutedWord) => word.startsWith(mutedWord))
-                  ))
-            );
-          })
-          .map((item) => ({ post: item.post.uri })),
-      ],
+      feed: response7.data.feed
+        .filter((item) => {
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          const postText: string | undefined = item.post.record.text;
+          return (
+            followingDids.has(item.post.author.did) &&
+            (item.reply == null ||
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore
+              followingDids.has(item.reply?.parent?.author?.did)) &&
+            (postText == null ||
+              !postText
+                .toLowerCase()
+                .split(/\s+/)
+                .some((word) =>
+                  muteWords.some((mutedWord) => word.startsWith(mutedWord))
+                ))
+          );
+        })
+        .map((item) => ({ post: item.post.uri })),
       cursor: response7.data.cursor,
     }),
     headers: {
