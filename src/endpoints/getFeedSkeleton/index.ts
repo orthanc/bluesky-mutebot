@@ -4,6 +4,8 @@ import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
 import { DidResolver, MemoryCache } from '@atproto/did-resolver';
+import { getBskyAgent } from '../../bluesky';
+import { getSubscriberFollowingRecord } from '../../followingStore';
 
 const didCache = new MemoryCache();
 const didResolver = new DidResolver(
@@ -31,6 +33,23 @@ export const rawHandler = async (
 
   console.log({ requesterDid });
 
+  const [agent, following] = await Promise.all([
+    getBskyAgent(),
+    getSubscriberFollowingRecord(requesterDid),
+  ]);
+  const response7 =
+    following == null
+      ? { data: { feed: [], cursor: undefined } }
+      : await agent.app.bsky.feed.getListFeed({
+          list: process.env.BLUESKY_FOLLOWING_LIST ?? '?? unknown list ??',
+          cursor: (event.queryStringParameters ?? {}).cursor,
+        });
+
+  const followingDids = new Set<string>();
+  Object.keys(following?.following ?? {}).forEach((did) =>
+    followingDids.add(did)
+  );
+
   return {
     statusCode: 200,
     body: JSON.stringify({
@@ -41,7 +60,31 @@ export const rawHandler = async (
         {
           post: 'at://did:plc:crngjmsdh3zpuhmd5gtgwx6q/app.bsky.feed.post/3ka3xgyn4e62w',
         },
+        ...response7.data.feed
+          .filter((item) => {
+            console.log({
+              author: item.post.author.did,
+              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+              // @ts-ignore
+              parentAuthor: item.reply?.parent?.author?.did,
+              following: followingDids.has(item.post.author.did),
+              followingParent:
+                item.reply == null ||
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                followingDids.has(item.reply?.parent?.author?.did),
+            });
+            return (
+              followingDids.has(item.post.author.did) &&
+              (item.reply == null ||
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                followingDids.has(item.reply?.parent?.author?.did))
+            );
+          })
+          .map((item) => ({ post: item.post.uri })),
       ],
+      cursor: response7.data.cursor,
     }),
     headers: {
       'content-type': 'application/json',

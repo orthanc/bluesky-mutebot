@@ -53,6 +53,15 @@ functions:
     handler: ./src/endpoints/getFeedSkeleton/index.handler
     events:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
+    environment:
+      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
+      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt SubscriberFollowingTable.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
