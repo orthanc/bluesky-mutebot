@@ -12,6 +12,7 @@ provider:
   environment:
     PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
+    MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
     BLUESKY_FOLLOWING_LIST: ${ssm:/bluesky-feeds/${self:provider.stage}/following-list}
 
@@ -30,6 +31,7 @@ custom:
     apiType: http
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
+  muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   updateListQueue: ${self:service}-${self:provider.stage}-update-list
   updateListQueueDLQ: ${self:service}-${self:provider.stage}-update-list-dlq
   blueskyAuth:
@@ -62,6 +64,20 @@ functions:
           - dynamodb:GetItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+
+  notificationListener:
+    handler: ./src/endpoints/notificationListener/index.handler
+    environment:
+      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
+      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
@@ -176,6 +192,22 @@ resources:
             KeyType: RANGE
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+
+    MuteWordsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.muteWordsTable}
+        AttributeDefinitions:
+          - AttributeName: subscriberDid
+            AttributeType: S
+          - AttributeName: muteWord
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: subscriberDid
+            KeyType: HASH
+          - AttributeName: muteWord
+            KeyType: RANGE
 
     UpdateListQueue:
       Type: AWS::SQS::Queue
