@@ -6,12 +6,42 @@ import { verifyJwt } from '@atproto/xrpc-server';
 import { DidResolver, MemoryCache } from '@atproto/did-resolver';
 import { getBskyAgent } from '../../bluesky';
 import { getSubscriberFollowingRecord } from '../../followingStore';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  QueryCommandOutput,
+} from '@aws-sdk/lib-dynamodb';
+
+const client = new DynamoDBClient({});
+const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 const didCache = new MemoryCache();
 const didResolver = new DidResolver(
   { plcUrl: 'https://plc.directory' },
   didCache
 );
+
+const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
+  const TableName = process.env.MUTE_WORDS_TABLE as string;
+  let ExclusiveStartKey: Record<string, string> | undefined = undefined;
+  const muteWords: Array<string> = [];
+  do {
+    const result: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName,
+        KeyConditionExpression: 'subscriberDid = :subscriberDid',
+        ExpressionAttributeValues: {
+          ':subscriberDid': subscriberDid,
+        },
+        ExclusiveStartKey,
+      })
+    );
+    (ExclusiveStartKey = result.LastEvaluatedKey),
+      result.Items?.map(({ muteWord }) => muteWords.push(muteWord));
+  } while (ExclusiveStartKey != null);
+  return muteWords;
+};
 
 export const rawHandler = async (
   event: APIGatewayProxyEventV2
@@ -33,10 +63,12 @@ export const rawHandler = async (
 
   console.log({ requesterDid });
 
-  const [agent, following] = await Promise.all([
+  const [agent, following, muteWords] = await Promise.all([
     getBskyAgent(),
     getSubscriberFollowingRecord(requesterDid),
+    getMuteWords(requesterDid),
   ]);
+  console.log({ muteWords });
   const response7 =
     following == null
       ? { data: { feed: [], cursor: undefined } }
@@ -62,24 +94,22 @@ export const rawHandler = async (
         },
         ...response7.data.feed
           .filter((item) => {
-            console.log({
-              author: item.post.author.did,
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore
-              parentAuthor: item.reply?.parent?.author?.did,
-              following: followingDids.has(item.post.author.did),
-              followingParent:
-                item.reply == null ||
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                // @ts-ignore
-                followingDids.has(item.reply?.parent?.author?.did),
-            });
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-expect-error
+            const postText: string | undefined = item.post.record.text;
             return (
               followingDids.has(item.post.author.did) &&
               (item.reply == null ||
                 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-ignore
-                followingDids.has(item.reply?.parent?.author?.did))
+                followingDids.has(item.reply?.parent?.author?.did)) &&
+              (postText == null ||
+                !postText
+                  .toLowerCase()
+                  .split(/\s+/)
+                  .some((word) =>
+                    muteWords.some((mutedWord) => word.startsWith(mutedWord))
+                  ))
             );
           })
           .map((item) => ({ post: item.post.uri })),

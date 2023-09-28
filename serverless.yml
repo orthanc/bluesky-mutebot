@@ -64,6 +64,11 @@ functions:
           - dynamodb:GetItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
 
   notificationListener:
     handler: ./src/endpoints/notificationListener/index.handler
