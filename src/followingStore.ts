@@ -1,8 +1,12 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+} from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
+  PutCommand,
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
@@ -32,6 +36,33 @@ export type AggregateListRecord = {
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+export const triggerSubscriberSync = async (subscriberDid: string) => {
+  try {
+    const now = new Date().toISOString();
+    await ddbDocClient.send(
+      new PutCommand({
+        TableName: process.env.SYNC_SUBSCRIBER_QUEUE_TABLE as string,
+        Item: {
+          subscriberDid,
+          lastTriggered: now,
+        },
+        ConditionExpression:
+          'attribute_not_exists(lastTriggered) OR lastTriggered < :lastTriggeredCheck',
+        ExpressionAttributeValues: {
+          ':lastTriggeredCheck': new Date(
+            Date.now() - 30 * 60000
+          ).toISOString(),
+        },
+      })
+    );
+  } catch (error) {
+    if (!(error instanceof ConditionalCheckFailedException)) {
+      throw error;
+    }
+    console.log('ignoring trugger for ' + subscriberDid + ' not been 30 min');
+  }
+};
 
 export const getSubscriberFollowingRecord = async (
   subscriberDid: string

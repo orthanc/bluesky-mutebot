@@ -5,7 +5,10 @@ import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
 import { DidResolver, MemoryCache } from '@atproto/did-resolver';
 import { getBskyAgent } from '../../bluesky';
-import { getSubscriberFollowingRecord } from '../../followingStore';
+import {
+  getSubscriberFollowingRecord,
+  triggerSubscriberSync,
+} from '../../followingStore';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
@@ -62,11 +65,12 @@ export const rawHandler = async (
   );
 
   console.log({ requesterDid });
-
+  const cursor = (event.queryStringParameters ?? {}).cursor;
   const [agent, following, muteWords] = await Promise.all([
     getBskyAgent(),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
+    cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
   ]);
   console.log({ muteWords });
   const response7 =
@@ -74,7 +78,8 @@ export const rawHandler = async (
       ? { data: { feed: [], cursor: undefined } }
       : await agent.app.bsky.feed.getListFeed({
           list: process.env.BLUESKY_FOLLOWING_LIST ?? '?? unknown list ??',
-          cursor: (event.queryStringParameters ?? {}).cursor,
+          limit: 100,
+          cursor,
         });
 
   const followingDids = new Set<string>();

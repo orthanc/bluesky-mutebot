@@ -8,6 +8,7 @@ import {
   TransactWriteCommand,
   TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb';
+import { triggerSubscriberSync } from '../../followingStore';
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -146,5 +147,13 @@ export const handler = async (): Promise<void> => {
     await agent.app.bsky.notification.updateSeen({
       seenAt: latestDate,
     });
+  }
+
+  const uniqueSubscribers = new Set<string>();
+  operations.forEach(({ subscriberDid }) =>
+    uniqueSubscribers.add(subscriberDid)
+  );
+  for (const subscriberDid of Array.from(uniqueSubscribers)) {
+    await triggerSubscriberSync(subscriberDid);
   }
 };

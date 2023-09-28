@@ -11,6 +11,7 @@ provider:
     name: ${ssm:deployment-artifacts-bucket}
   environment:
     PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
+    SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
@@ -69,9 +70,16 @@ functions:
           - dynamodb:Query
         Resource:
           - !GetAtt MuteWordsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt SyncSubscriberQueueTable.Arn
 
   notificationListener:
     handler: ./src/endpoints/notificationListener/index.handler
+    events:
+      - schedule: rate(1 minute)
     environment:
       BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
@@ -83,6 +91,11 @@ functions:
           - dynamodb:DeleteItem
         Resource:
           - !GetAtt MuteWordsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt SyncSubscriberQueueTable.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
