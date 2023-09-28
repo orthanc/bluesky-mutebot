@@ -13,7 +13,7 @@ let nextSendTime = 0;
 const queueMessage = async (event: UpdateListEvent) => {
   const now = Date.now();
   const DelaySeconds = Math.round(Math.max(0, nextSendTime - now) / 1000);
-  nextSendTime = now + (DelaySeconds + Math.round(Math.random() * 30)) * 1000;
+  nextSendTime = now + (DelaySeconds + Math.round(Math.random() * 60)) * 1000;
   console.log({ now, DelaySeconds, nextSendTime });
   await sqsClient.send(
     new SendMessageCommand({
