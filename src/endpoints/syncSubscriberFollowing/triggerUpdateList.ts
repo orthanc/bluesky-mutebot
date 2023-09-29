@@ -13,18 +13,47 @@ let nextSendTime = 0;
 const queueMessage = async (event: UpdateListEvent) => {
   const now = Date.now();
   const DelaySeconds = Math.round(Math.max(0, nextSendTime - now) / 1000);
-  nextSendTime = now + (DelaySeconds + Math.round(Math.random() * 60)) * 1000;
-  console.log({ now, DelaySeconds, nextSendTime });
-  await sqsClient.send(
-    new SendMessageCommand({
-      QueueUrl: process.env.UPDATE_LIST_QUEUE_URL ?? '?? unknown queue ??',
-      MessageBody: JSON.stringify(event),
-      DelaySeconds,
-    })
-  );
+  console.log({ now, DelaySeconds });
+  if (DelaySeconds > 900) {
+    console.log('queueing for backoff');
+    await sqsClient.send(
+      new SendMessageCommand({
+        QueueUrl:
+          process.env.UPDATE_LIST_BACKOFF_QUEUE_URL ?? '?? unknown queue ??',
+        MessageBody: JSON.stringify(event),
+        DelaySeconds: 900,
+      })
+    );
+  } else {
+    nextSendTime = now + (DelaySeconds + Math.round(Math.random() * 40)) * 1000;
+    console.log('queueing for action');
+    await sqsClient.send(
+      new SendMessageCommand({
+        QueueUrl: process.env.UPDATE_LIST_QUEUE_URL ?? '?? unknown queue ??',
+        MessageBody: JSON.stringify(event),
+        DelaySeconds,
+      })
+    );
+  }
 };
 
-export const rawHandler = async (event: AggregateListRecord): Promise<void> => {
+type Event =
+  | {
+      type: 'initial';
+      event: AggregateListRecord;
+    }
+  | {
+      type: 'replay';
+      event: UpdateListEvent;
+    };
+
+export const rawHandler = async (rawEvent: Event): Promise<void> => {
+  if (rawEvent.type === 'replay') {
+    console.log('Replaying ' + JSON.stringify(rawEvent.event));
+    await queueMessage(rawEvent.event);
+    return;
+  }
+  const event = rawEvent.event;
   if (event.followedBy === 0) {
     console.log('Deleting: ' + JSON.stringify(event));
     let deletedRecord;
@@ -63,5 +92,19 @@ export const rawHandler = async (event: AggregateListRecord): Promise<void> => {
 export const handler = middy(rawHandler).before((request) => {
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-expect-error
-  request.event = unmarshall(request.event.Records[0].dynamodb?.NewImage);
+  if (request.event.Records[0].dynamodb != null) {
+    request.event = {
+      type: 'initial',
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
+      event: unmarshall(request.event.Records[0].dynamodb?.NewImage),
+    };
+  } else {
+    request.event = {
+      type: 'replay',
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
+      event: JSON.parse(request.event.Records[0].body),
+    };
+  }
 });

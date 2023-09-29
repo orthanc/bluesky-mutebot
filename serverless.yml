@@ -34,6 +34,7 @@ custom:
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   updateListQueue: ${self:service}-${self:provider.stage}-update-list
+  updateListBackoffQueue: ${self:service}-${self:provider.stage}-update-list-backoff
   updateListQueueDLQ: ${self:service}-${self:provider.stage}-update-list-dlq
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
@@ -123,7 +124,11 @@ functions:
 
   syncSubscriberFollowing-trigUpdList:
     handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateList.handler
-    events:	
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [UpdateListBackoffQueue, Arn]
+          batchSize: 1
       - stream:
           type: dynamodb
           arn:
@@ -145,6 +150,7 @@ functions:
                     N: ["0"]
     environment:
       UPDATE_LIST_QUEUE_URL: !Ref UpdateListQueue
+      UPDATE_LIST_BACKOFF_QUEUE_URL: !Ref UpdateListBackoffQueue
     iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-triglist-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
@@ -157,6 +163,11 @@ functions:
           - sqs:SendMessage
         Resource:
           - !GetAtt UpdateListQueue.Arn
+      - Effect: "Allow"
+        Action:
+          - sqs:SendMessage
+        Resource:
+          - !GetAtt UpdateListBackoffQueue.Arn
 
   syncSubscriberFollowing-updateList:
     handler: ./src/endpoints/syncSubscriberFollowing/updateList.handler
@@ -231,6 +242,14 @@ resources:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: ${self:custom.updateListQueue}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt UpdateListQueueDLQ.Arn
+          maxReceiveCount: 5
+
+    UpdateListBackoffQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.updateListBackoffQueue}
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt UpdateListQueueDLQ.Arn
           maxReceiveCount: 5
