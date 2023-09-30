@@ -27,7 +27,7 @@ const queueMessage = async (event: UpdateFollowingEvent) => {
     );
   } else {
     nextSendTime =
-      now + (DelaySeconds + Math.round(15 * Math.random()) + 15) * 1000;
+      now + (DelaySeconds + Math.round(3 * Math.random()) + 1) * 1000;
     console.log('queueing for action');
     await sqsClient.send(
       new SendMessageCommand({
