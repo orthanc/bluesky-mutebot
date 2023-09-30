@@ -30,8 +30,8 @@ export type AggregateListRecord = {
   qualifier: string;
   handle: string;
   followedBy: number;
-  listItemUri?: string;
-  listItemRid?: string;
+  followingEntryUri?: string;
+  followingEntryRid?: string;
 };
 
 const client = new DynamoDBClient({});
@@ -176,10 +176,10 @@ export const getAggregateListRecord = async (
   return result.Item as AggregateListRecord | undefined;
 };
 
-export const recordListItemId = async (
+export const recordFollowingEntryId = async (
   followingDid: string,
-  listItemUri: string,
-  listItemRid: string
+  followingEntryUri: string,
+  followingEntryRid: string
 ) => {
   await ddbDocClient.send(
     new UpdateCommand({
@@ -189,10 +189,10 @@ export const recordListItemId = async (
         qualifier: followingDid,
       },
       UpdateExpression:
-        'SET listItemUri = :listItemUri, listItemRid = :listItemRid',
+        'SET followingEntryUri = :followingEntryUri, followingEntryRid = :followingEntryRid',
       ExpressionAttributeValues: {
-        ':listItemUri': listItemUri,
-        ':listItemRid': listItemRid,
+        ':followingEntryUri': followingEntryUri,
+        ':followingEntryRid': followingEntryRid,
       },
       ConditionExpression: 'attribute_exists(qualifier)',
     })

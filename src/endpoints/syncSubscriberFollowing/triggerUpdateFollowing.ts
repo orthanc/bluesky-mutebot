@@ -6,11 +6,11 @@ import {
   deleteAggregateListRecord,
 } from '../../followingStore';
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
-import { UpdateListEvent } from './updateList';
+import { UpdateFollowingEvent } from './updateFollowing';
 
 const sqsClient = new SQSClient({});
 let nextSendTime = 0;
-const queueMessage = async (event: UpdateListEvent) => {
+const queueMessage = async (event: UpdateFollowingEvent) => {
   const now = Date.now();
   const DelaySeconds = Math.round(Math.max(0, nextSendTime - now) / 1000);
   console.log({ now, DelaySeconds });
@@ -19,17 +19,20 @@ const queueMessage = async (event: UpdateListEvent) => {
     await sqsClient.send(
       new SendMessageCommand({
         QueueUrl:
-          process.env.UPDATE_LIST_BACKOFF_QUEUE_URL ?? '?? unknown queue ??',
+          process.env.UPDATE_FOLLOWING_BACKOFF_QUEUE_URL ??
+          '?? unknown queue ??',
         MessageBody: JSON.stringify(event),
         DelaySeconds: 900,
       })
     );
   } else {
-    nextSendTime = now + (DelaySeconds + Math.round(Math.random() * 40)) * 1000;
+    nextSendTime =
+      now + (DelaySeconds + Math.round(15 * Math.random()) + 15) * 1000;
     console.log('queueing for action');
     await sqsClient.send(
       new SendMessageCommand({
-        QueueUrl: process.env.UPDATE_LIST_QUEUE_URL ?? '?? unknown queue ??',
+        QueueUrl:
+          process.env.UPDATE_FOLLOWING_QUEUE_URL ?? '?? unknown queue ??',
         MessageBody: JSON.stringify(event),
         DelaySeconds,
       })
@@ -44,7 +47,7 @@ type Event =
     }
   | {
       type: 'replay';
-      event: UpdateListEvent;
+      event: UpdateFollowingEvent;
     };
 
 export const rawHandler = async (rawEvent: Event): Promise<void> => {
@@ -68,16 +71,16 @@ export const rawHandler = async (rawEvent: Event): Promise<void> => {
       }
     }
     if (
-      deletedRecord.listItemUri == null ||
-      deletedRecord.listItemRid == null
+      deletedRecord.followingEntryUri == null ||
+      deletedRecord.followingEntryRid == null
     ) {
       console.log('Skipping remove list as there is no URI / RID');
     } else {
       await queueMessage({
         type: 'remove',
         userDid: deletedRecord.qualifier,
-        listItemUri: deletedRecord.listItemUri,
-        listItemRid: deletedRecord.listItemRid,
+        followingEntryUri: deletedRecord.followingEntryUri,
+        followingEntryRid: deletedRecord.followingEntryRid,
       });
     }
   } else {

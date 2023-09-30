@@ -33,9 +33,9 @@ custom:
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
-  updateListQueue: ${self:service}-${self:provider.stage}-update-list
-  updateListBackoffQueue: ${self:service}-${self:provider.stage}-update-list-backoff
-  updateListQueueDLQ: ${self:service}-${self:provider.stage}-update-list-dlq
+  updateFollowingQueue: ${self:service}-${self:provider.stage}-update-following
+  updateFollowingBackoffQueue: ${self:service}-${self:provider.stage}-update-following-backoff
+  updateFollowingQueueDLQ: ${self:service}-${self:provider.stage}-update-following-dlq
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
@@ -105,6 +105,7 @@ functions:
           type: dynamodb
           arn:
             Fn::GetAtt: [SyncSubscriberQueueTable, StreamArn]
+          startingPosition: LATEST
           batchSize: 1
           maximumRetryAttempts: 5
           filterPatterns:
@@ -122,17 +123,19 @@ functions:
           - !GetAtt SyncSubscriberQueueTable.Arn
           - !GetAtt SubscriberFollowingTable.Arn
 
-  syncSubscriberFollowing-trigUpdList:
-    handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateList.handler
+  syncSubscriberFollowing-trigUpdFoll:
+    handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateFollowing.handler
     events:
       - sqs:
           arn:
-            Fn::GetAtt: [UpdateListBackoffQueue, Arn]
+            Fn::GetAtt: [UpdateFollowingBackoffQueue, Arn]
           batchSize: 1
+          maximumConcurrency: 2
       - stream:
           type: dynamodb
           arn:
             Fn::GetAtt: [SubscriberFollowingTable, StreamArn]
+          startingPosition: LATEST
           batchSize: 1
           maximumRetryAttempts: 5
           filterPatterns:
@@ -149,9 +152,9 @@ functions:
                   followedBy:
                     N: ["0"]
     environment:
-      UPDATE_LIST_QUEUE_URL: !Ref UpdateListQueue
-      UPDATE_LIST_BACKOFF_QUEUE_URL: !Ref UpdateListBackoffQueue
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-triglist-${self:provider.region}
+      UPDATE_FOLLOWING_QUEUE_URL: !Ref UpdateFollowingQueue
+      UPDATE_FOLLOWING_BACKOFF_QUEUE_URL: !Ref UpdateFollowingBackoffQueue
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-trigfoll-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
@@ -162,24 +165,25 @@ functions:
         Action:
           - sqs:SendMessage
         Resource:
-          - !GetAtt UpdateListQueue.Arn
+          - !GetAtt UpdateFollowingQueue.Arn
       - Effect: "Allow"
         Action:
           - sqs:SendMessage
         Resource:
-          - !GetAtt UpdateListBackoffQueue.Arn
+          - !GetAtt UpdateFollowingBackoffQueue.Arn
 
-  syncSubscriberFollowing-updateList:
-    handler: ./src/endpoints/syncSubscriberFollowing/updateList.handler
+  syncSubscriberFollowing-updateFoll:
+    handler: ./src/endpoints/syncSubscriberFollowing/updateFollowing.handler
     events:
       - sqs:
           arn:
-            Fn::GetAtt: [UpdateListQueue, Arn]
+            Fn::GetAtt: [UpdateFollowingQueue, Arn]
           batchSize: 1
+          maximumConcurrency: 2
     environment:
       BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-list-${self:provider.region}
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-foll-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
@@ -238,25 +242,25 @@ resources:
           - AttributeName: muteWord
             KeyType: RANGE
 
-    UpdateListQueue:
+    UpdateFollowingQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:custom.updateListQueue}
+        QueueName: ${self:custom.updateFollowingQueue}
         RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateListQueueDLQ.Arn
+          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
           maxReceiveCount: 5
 
-    UpdateListBackoffQueue:
+    UpdateFollowingBackoffQueue:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:custom.updateListBackoffQueue}
+        QueueName: ${self:custom.updateFollowingBackoffQueue}
         RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateListQueueDLQ.Arn
+          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
           maxReceiveCount: 5
     
-    UpdateListQueueDLQ:
+    UpdateFollowingQueueDLQ:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: ${self:custom.updateListQueueDLQ}
+        QueueName: ${self:custom.updateFollowingQueueDLQ}
         RedriveAllowPolicy:
           redrivePermission: allowAll
