@@ -15,7 +15,6 @@ provider:
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
-    BLUESKY_FOLLOWING_LIST: ${ssm:/bluesky-feeds/${self:provider.stage}/following-list}
 
 
 custom:

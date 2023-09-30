@@ -76,8 +76,7 @@ export const rawHandler = async (
   const response7 =
     following == null
       ? { data: { feed: [], cursor: undefined } }
-      : await agent.app.bsky.feed.getListFeed({
-          list: process.env.BLUESKY_FOLLOWING_LIST ?? '?? unknown list ??',
+      : await agent.getTimeline({
           limit: 100,
           cursor,
         });
