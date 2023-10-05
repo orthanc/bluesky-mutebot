@@ -49,9 +49,6 @@ This is a [Serverless](https://serverless.com/) Project designed to be deployed 
 * Data sourcing Endpoints
   * [notificationListener](src/endpoints/notificationListener/index.ts) - pools for new notifications for the `@mutebot.bsky.social` to find mute and unmute commands
   * [syncSubscriberFollowing](src/endpoints/syncSubscriberFollowing/index.ts) - triggered indirection by people looking at the Mutebot feed, this sources the list of people someone follows and saves them so we can provide their feed. At the moment this also indirectly triggers following all the persons followers
-* Internal functions
-  * [syncSubscriberFollowing-trigUpdFoll](src/endpoints/syncSubscriberFollowing/triggerUpdateFollowing.ts) - triggered by new people needing to be followed or unfollowed because of `syncSubscriberFollowing`, queues these actions with a delay to try and stay within rate limits
-  * [syncSubscriberFollowing-updateFoll](src/endpoints/syncSubscriberFollowing/updateFollowing.ts) - triggered by actions queued by `syncSubscriberFollowing` to actually follow / unfollow people from the mutebot account
 
 ## Environment parameters
 
@@ -70,13 +67,8 @@ Amazon Dynamo DB is primarily used for storing data records. The tables are:
 * `SyncSubscriberQueueTable` - people who should have thier following lists synced are written into this table to trigger `syncSubscriberFollowing`. The indirection allows us to do a "sync if they haven't been synced in 30 minutes" flow and decouple the syncing of followers from the feed generation.
 * `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
   * A record for each user keyed by their `did` that saves the list of people they follow
-  * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger `syncSubscriberFollowing-trigUpdFoll` when first created or when the follower count hits 0 to follow or unfollow someone
+  * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger are used to filter the firehose to only Bleets by people someone cares to follow
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
-
-There are also several SQS queues used for internal processing:
-* `UpdateFollowingQueue` used to queue actions for `syncSubscriberFollowing-updateFoll` so that we can spread them out over time to stick within the rate limits
-* `UpdateFollowingBackoffQueue` - when `UpdateFollowingQueue` is full, operations are added here with a 15 min delay to be reprocessed and spread out on `UpdateFollowingQueue` when they can be
-* `UpdateFollowingQueueDLQ` - dead letter queue for the above queues
 
 ## Getting Involved
 

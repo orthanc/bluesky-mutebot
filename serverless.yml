@@ -32,9 +32,6 @@ custom:
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
-  updateFollowingQueue: ${self:service}-${self:provider.stage}-update-following
-  updateFollowingBackoffQueue: ${self:service}-${self:provider.stage}-update-following-backoff
-  updateFollowingQueueDLQ: ${self:service}-${self:provider.stage}-update-following-dlq
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
@@ -127,75 +124,6 @@ functions:
           - !GetAtt SyncSubscriberQueueTable.Arn
           - !GetAtt SubscriberFollowingTable.Arn
 
-  syncSubscriberFollowing-trigUpdFoll:
-    handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateFollowing.handler
-    events:
-      - sqs:
-          arn:
-            Fn::GetAtt: [UpdateFollowingBackoffQueue, Arn]
-          batchSize: 1
-          maximumConcurrency: 2
-      - stream:
-          type: dynamodb
-          arn:
-            Fn::GetAtt: [SubscriberFollowingTable, StreamArn]
-          startingPosition: LATEST
-          batchSize: 1
-          maximumRetryAttempts: 5
-          filterPatterns:
-            - eventName: [INSERT]
-              dynamodb: 
-                NewImage:
-                  subscriberDid:
-                    S: [aggregate]
-            - eventName: [MODIFY]
-              dynamodb: 
-                NewImage:
-                  subscriberDid:
-                    S: [aggregate]
-                  followedBy:
-                    N: ["0"]
-    environment:
-      UPDATE_FOLLOWING_QUEUE_URL: !Ref UpdateFollowingQueue
-      UPDATE_FOLLOWING_BACKOFF_QUEUE_URL: !Ref UpdateFollowingBackoffQueue
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-trigfoll-${self:provider.region}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:DeleteItem
-        Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
-      - Effect: "Allow"
-        Action:
-          - sqs:SendMessage
-        Resource:
-          - !GetAtt UpdateFollowingQueue.Arn
-      - Effect: "Allow"
-        Action:
-          - sqs:SendMessage
-        Resource:
-          - !GetAtt UpdateFollowingBackoffQueue.Arn
-
-  syncSubscriberFollowing-updateFoll:
-    handler: ./src/endpoints/syncSubscriberFollowing/updateFollowing.handler
-    events:
-      - sqs:
-          arn:
-            Fn::GetAtt: [UpdateFollowingQueue, Arn]
-          batchSize: 1
-          maximumConcurrency: 2
-    environment:
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
-      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-foll-${self:provider.region}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:GetItem
-          - dynamodb:UpdateItem
-        Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
-
 resources:
   Resources:
     SyncSubscriberQueueTable:
@@ -245,26 +173,3 @@ resources:
             KeyType: HASH
           - AttributeName: muteWord
             KeyType: RANGE
-
-    UpdateFollowingQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.updateFollowingQueue}
-        RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
-          maxReceiveCount: 5
-
-    UpdateFollowingBackoffQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.updateFollowingBackoffQueue}
-        RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
-          maxReceiveCount: 5
-    
-    UpdateFollowingQueueDLQ:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.updateFollowingQueueDLQ}
-        RedriveAllowPolicy:
-          redrivePermission: allowAll
