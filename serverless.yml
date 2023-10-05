@@ -38,6 +38,9 @@ custom:
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
+  enablePolling:
+    development: false
+    production: true
 
 	
 plugins:
@@ -79,7 +82,9 @@ functions:
   notificationListener:
     handler: ./src/endpoints/notificationListener/index.handler
     events:
-      - schedule: rate(1 minute)
+      - schedule:
+          rate: rate(1 minute)
+          enabled: ${self:custom.enablePolling.${self:provider.stage}}
     environment:
       BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
