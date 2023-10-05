@@ -47,7 +47,7 @@ This is a [Serverless](https://serverless.com/) Project designed to be deployed 
   * [did](src/endpoints/did/index.ts) - Serves `/.well-known/did.json` to declare the deployment as an XRPC server providing a Bluesky feed generator
   * [getFeedSkeleton](src/endpoints/getFeedSkeleton/index.ts) - provides the feed skeleton required for a Bluesky feed. Essentially this will return a list of post urls for the `Mutebot - Following` feed for whatever user is getting their feed
 * Data sourcing Endpoints
-  * [notificationListener](src/endpoints/notificationListener/index.ts) - pools for new notifications for the `@mutebot.bsky.social` to find mute and unmute commands
+  * [notificationListener](src/endpoints/notificationListener/index.ts) - polls for new notifications for the `@mutebot.bsky.social` to find mute and unmute commands
   * [syncSubscriberFollowing](src/endpoints/syncSubscriberFollowing/index.ts) - triggered indirection by people looking at the Mutebot feed, this sources the list of people someone follows and saves them so we can provide their feed. At the moment this also indirectly triggers following all the persons followers
 
 ## Environment parameters
@@ -69,6 +69,8 @@ Amazon Dynamo DB is primarily used for storing data records. The tables are:
   * A record for each user keyed by their `did` that saves the list of people they follow
   * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger are used to filter the firehose to only Bleets by people someone cares to follow
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
+* `AppStatusTable` - used to store various state between lambda invocations. Keys are:
+  * `firehose-cursor` - for the cursor of where to resume the firehose read
 
 ## Getting Involved
 
