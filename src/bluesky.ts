@@ -1,6 +1,6 @@
 import { BskyAgent } from '@atproto/api';
 
-const agent = new BskyAgent({ service: 'https://bsky.social' });
+export const agent = new BskyAgent({ service: 'https://bsky.social' });
 export const getBskyAgent = async () => {
   if (agent.hasSession) {
     console.log('already logged in');
