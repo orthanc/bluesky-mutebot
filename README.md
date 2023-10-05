@@ -68,7 +68,7 @@ The following SSM parameters must be setup in the AWS account where this project
 
 Amazon Dynamo DB is primarily used for storing data records. The tables are:
 * `SyncSubscriberQueueTable` - people who should have thier following lists synced are written into this table to trigger `syncSubscriberFollowing`. The indirection allows us to do a "sync if they haven't been synced in 30 minutes" flow and decouple the syncing of followers from the feed generation.
-*  `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
+* `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
   * A record for each user keyed by their `did` that saves the list of people they follow
   * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger `syncSubscriberFollowing-trigUpdFoll` when first created or when the follower count hits 0 to follow or unfollow someone
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
