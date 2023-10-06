@@ -80,6 +80,7 @@ export type Operations<T = Record<string, unknown>> = {
 };
 
 export type CreateOp<T> = {
+  op: 'create';
   uri: string;
   cid: string;
   author: string;
@@ -87,6 +88,7 @@ export type CreateOp<T> = {
 };
 
 export type DeleteOp = {
+  op: 'delete';
   uri: string;
   author: string;
 };
@@ -155,9 +157,14 @@ const getOpsByType = async (evt: Commit): Promise<OperationsByType> => {
     if (op.action === 'create') {
       if (!op.cid) continue;
       const recordBytes = car.blocks.get(op.cid);
+      const create: Omit<CreateOp<unknown>, 'record'> = {
+        op: 'create',
+        uri,
+        cid: op.cid.toString(),
+        author: evt.repo,
+      };
       if (!recordBytes) continue;
       const record = cborToLexRecord(recordBytes);
-      const create = { uri, cid: op.cid.toString(), author: evt.repo };
       if (collection === ids.AppBskyFeedPost && isPost(record)) {
         opsByType.posts.creates.push({ record, ...create });
       } else if (collection === ids.AppBskyFeedRepost && isRepost(record)) {
@@ -171,13 +178,13 @@ const getOpsByType = async (evt: Commit): Promise<OperationsByType> => {
 
     if (op.action === 'delete') {
       if (collection === ids.AppBskyFeedPost) {
-        opsByType.posts.deletes.push({ uri, author: evt.repo });
+        opsByType.posts.deletes.push({ op: 'delete', uri, author: evt.repo });
       } else if (collection === ids.AppBskyFeedRepost) {
-        opsByType.reposts.deletes.push({ uri, author: evt.repo });
+        opsByType.reposts.deletes.push({ op: 'delete', uri, author: evt.repo });
       } else if (collection === ids.AppBskyFeedLike) {
-        opsByType.likes.deletes.push({ uri, author: evt.repo });
+        opsByType.likes.deletes.push({ op: 'delete', uri, author: evt.repo });
       } else if (collection === ids.AppBskyGraphFollow) {
-        opsByType.follows.deletes.push({ uri, author: evt.repo });
+        opsByType.follows.deletes.push({ op: 'delete', uri, author: evt.repo });
       }
     }
   }

@@ -3,6 +3,7 @@ import {
   DynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
 import {
+  BatchGetCommand,
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
@@ -174,6 +175,39 @@ export const getAggregateListRecord = async (
     })
   );
   return result.Item as AggregateListRecord | undefined;
+};
+
+export const batchGetAggregateListRecord = async (
+  userDids: ReadonlyArray<string>
+): Promise<Record<string, AggregateListRecord>> => {
+  const TableName = process.env.SUBSCRIBER_FOLLOWING_TABLE as string;
+
+  let keys: Array<Record<string, unknown>> = userDids.map((did) => ({
+    subscriberDid: 'aggregate',
+    qualifier: did,
+  }));
+  const records: Record<string, AggregateListRecord> = {};
+  while (keys.length > 0) {
+    const batch = keys.slice(0, 100);
+    keys = keys.slice(100);
+    const result = await ddbDocClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [TableName]: {
+            Keys: batch,
+          },
+        },
+      })
+    );
+    const unprocessedKeys = result.UnprocessedKeys?.[TableName]?.Keys;
+    if (unprocessedKeys != null) {
+      keys.push(...unprocessedKeys);
+    }
+    result.Responses?.[TableName]?.forEach(
+      (item) => (records[item.qualifier] = item as AggregateListRecord)
+    );
+  }
+  return records;
 };
 
 export const recordFollowingEntryId = async (

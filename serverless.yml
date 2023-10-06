@@ -101,6 +101,31 @@ functions:
         Resource:
           - !GetAtt SyncSubscriberQueueTable.Arn
 
+  readFirehose:
+    handler: ./src/endpoints/readFirehose/index.handler
+    timeout: 240
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+          enabled: ${self:custom.enablePolling.${self:provider.stage}}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt AppStatusTable.Arn
+        Condition:
+          ForAllValues:StringEquals:
+            dynamodb:LeadingKeys:
+              - firehose-cursor
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt SubscriberFollowingTable.Arn
+
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
     events:	
