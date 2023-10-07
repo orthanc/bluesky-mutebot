@@ -23,7 +23,7 @@ const processBatch = async (
   );
 
   let postsSaved = 0;
-  let repostsSaved = 9;
+  let repostsSaved = 0;
   const postsToSave = posts
     .filter(({ author }) => {
       const rec = resolvedDids[author];
@@ -31,8 +31,7 @@ const processBatch = async (
       return rec.followedBy > 0;
     })
     .flatMap((post): Array<PostTableRecord> => {
-      // @ts-expect-error
-      if (post.type === ids.AppBskyFeedRepost && post.subject != null) {
+      if (post.type === ids.AppBskyFeedRepost && post.record.subject != null) {
         repostsSaved++;
         return [
           {
@@ -43,7 +42,7 @@ const processBatch = async (
             resolvedStatus: 'UNRESOLVED',
             expiresAt,
             // @ts-expect-error
-            repostedPostUri: post.subject.uri,
+            repostedPostUri: post.record.subject.uri,
           },
         ];
       } else if (post.type === ids.AppBskyFeedPost) {
@@ -107,7 +106,7 @@ const processBatch = async (
       return [];
     });
   const deletesToApply = deletes
-    .filter(({ author }) => resolvedDids[author] != null)
+    .filter(({ author }) => Boolean(resolvedDids[author]))
     .map((del) => del.uri);
   await savePostsBatch(postsToSave, deletesToApply);
   return {
@@ -129,7 +128,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
 
   let operationCount = 0;
   let posts: Record<string, CreateOp<PostRecord | RepostRecord>> = {};
-  let deletes: Array<DeleteOp> = [];
+  let deletes: Set<DeleteOp> = new Set();
   const start = new Date();
   let postsSaved = 0;
   let repostsSaved = 0;
@@ -158,7 +157,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
         delete posts[op.uri];
         operationCount--;
       } else {
-        deletes.push(op);
+        deletes.add(op);
         operationCount++;
       }
     }
@@ -167,13 +166,13 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
         resolvedDids,
         Array.from(didsToResolve),
         Object.values(posts),
-        deletes
+        Array.from(deletes)
       );
       postsSaved += metrics.postsSaved;
       repostsSaved += metrics.repostsSaved;
       deletesApplied += metrics.deletesApplied;
       posts = {};
-      deletes = [];
+      deletes = new Set();
       operationCount = 0;
       didsToResolve.clear();
     }
@@ -183,7 +182,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
       resolvedDids,
       Array.from(didsToResolve),
       Object.values(posts),
-      deletes
+      Array.from(deletes)
     );
     postsSaved += metrics.postsSaved;
     repostsSaved += metrics.repostsSaved;
