@@ -14,6 +14,8 @@ provider:
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
+    APP_STATUS_TABLE: ${self:custom.appStatusTable}
+    POSTS_TABLE: ${self:custom.postsTable}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
 
 
@@ -32,12 +34,14 @@ custom:
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
-  updateFollowingQueue: ${self:service}-${self:provider.stage}-update-following
-  updateFollowingBackoffQueue: ${self:service}-${self:provider.stage}-update-following-backoff
-  updateFollowingQueueDLQ: ${self:service}-${self:provider.stage}-update-following-dlq
+  appStatusTable: ${self:service}-${self:provider.stage}-app-status
+  postsTable: ${self:service}-${self:provider.stage}-posts
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
+  enablePolling:
+    development: false
+    production: true
 
 	
 plugins:
@@ -79,7 +83,9 @@ functions:
   notificationListener:
     handler: ./src/endpoints/notificationListener/index.handler
     events:
-      - schedule: rate(1 minute)
+      - schedule:
+          rate: rate(1 minute)
+          enabled: ${self:custom.enablePolling.${self:provider.stage}}
     environment:
       BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
@@ -96,6 +102,36 @@ functions:
           - dynamodb:PutItem
         Resource:
           - !GetAtt SyncSubscriberQueueTable.Arn
+
+  readFirehose:
+    handler: ./src/endpoints/readFirehose/index.handler
+    timeout: 240
+    events:
+      - schedule:
+          rate: rate(5 minutes)
+          enabled: ${self:custom.enablePolling.${self:provider.stage}}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt AppStatusTable.Arn
+        Condition:
+          ForAllValues:StringEquals:
+            dynamodb:LeadingKeys:
+              - firehose-cursor
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt SubscriberFollowingTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:BatchWriteItem
+        Resource:
+          - !GetAtt PostsTable.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
@@ -118,18 +154,13 @@ functions:
           - dynamodb:GetItem
           - dynamodb:PutItem
           - dynamodb:UpdateItem
+          - dynamodb:DeleteItem
         Resource:
-          - !GetAtt SyncSubscriberQueueTable.Arn
           - !GetAtt SubscriberFollowingTable.Arn
 
-  syncSubscriberFollowing-trigUpdFoll:
-    handler: ./src/endpoints/syncSubscriberFollowing/triggerUpdateFollowing.handler
+  syncSubscriberFollowing-onFolUnfol:
+    handler: ./src/endpoints/syncSubscriberFollowing/onFollowUnfollow.handler
     events:
-      - sqs:
-          arn:
-            Fn::GetAtt: [UpdateFollowingBackoffQueue, Arn]
-          batchSize: 1
-          maximumConcurrency: 2
       - stream:
           type: dynamodb
           arn:
@@ -139,54 +170,21 @@ functions:
           maximumRetryAttempts: 5
           filterPatterns:
             - eventName: [INSERT]
-              dynamodb: 
+              dynamodb:
                 NewImage:
                   subscriberDid:
                     S: [aggregate]
             - eventName: [MODIFY]
-              dynamodb: 
+              dynamodb:
                 NewImage:
                   subscriberDid:
                     S: [aggregate]
                   followedBy:
                     N: ["0"]
-    environment:
-      UPDATE_FOLLOWING_QUEUE_URL: !Ref UpdateFollowingQueue
-      UPDATE_FOLLOWING_BACKOFF_QUEUE_URL: !Ref UpdateFollowingBackoffQueue
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-trigfoll-${self:provider.region}
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-onFoUnfo-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
-          - dynamodb:DeleteItem
-        Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
-      - Effect: "Allow"
-        Action:
-          - sqs:SendMessage
-        Resource:
-          - !GetAtt UpdateFollowingQueue.Arn
-      - Effect: "Allow"
-        Action:
-          - sqs:SendMessage
-        Resource:
-          - !GetAtt UpdateFollowingBackoffQueue.Arn
-
-  syncSubscriberFollowing-updateFoll:
-    handler: ./src/endpoints/syncSubscriberFollowing/updateFollowing.handler
-    events:
-      - sqs:
-          arn:
-            Fn::GetAtt: [UpdateFollowingQueue, Arn]
-          batchSize: 1
-          maximumConcurrency: 2
-    environment:
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
-      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriberFoll-foll-${self:provider.region}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:GetItem
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
@@ -224,6 +222,39 @@ resources:
             KeyType: RANGE
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True
+
+    PostsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.postsTable}
+        AttributeDefinitions:
+          - AttributeName: uri
+            AttributeType: S
+          - AttributeName: resolvedStatus
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: uri
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ByResolvedStatusAndCreatedAt
+            KeySchema:
+              - AttributeName: resolvedStatus
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True
 
     MuteWordsTable:
       Type: AWS::DynamoDB::Table
@@ -241,25 +272,14 @@ resources:
           - AttributeName: muteWord
             KeyType: RANGE
 
-    UpdateFollowingQueue:
-      Type: AWS::SQS::Queue
+    AppStatusTable:
+      Type: AWS::DynamoDB::Table
       Properties:
-        QueueName: ${self:custom.updateFollowingQueue}
-        RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
-          maxReceiveCount: 5
-
-    UpdateFollowingBackoffQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.updateFollowingBackoffQueue}
-        RedrivePolicy:
-          deadLetterTargetArn: !GetAtt UpdateFollowingQueueDLQ.Arn
-          maxReceiveCount: 5
-    
-    UpdateFollowingQueueDLQ:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.updateFollowingQueueDLQ}
-        RedriveAllowPolicy:
-          redrivePermission: allowAll
+        TableName: ${self:custom.appStatusTable}
+        AttributeDefinitions:
+          - AttributeName: setting
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: setting
+            KeyType: HASH

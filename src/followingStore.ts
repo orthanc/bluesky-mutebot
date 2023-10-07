@@ -3,10 +3,12 @@ import {
   DynamoDBClient,
 } from '@aws-sdk/client-dynamodb';
 import {
-  DeleteCommand,
+  BatchGetCommand,
+  DeleteCommandInput,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  PutCommandInput,
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
@@ -116,22 +118,38 @@ export const saveUpdates = async (
       }
     }
 
+    const subscriberUpdate:
+      | { Put: PutCommandInput }
+      | { Delete: DeleteCommandInput } =
+      Object.keys(updatedSubscriberFollowing.following).length > 0
+        ? {
+            Put: {
+              TableName,
+              Item: updatedSubscriberFollowing,
+              ...(lastRev === 0
+                ? {
+                    ConditionExpression: 'attribute_not_exists(subscriberDid)',
+                  }
+                : {
+                    ConditionExpression: 'rev = :rev',
+                    ExpressionAttributeValues: { ':rev': lastRev },
+                  }),
+            },
+          }
+        : {
+            Delete: {
+              TableName,
+              Key: {
+                subscriberDid: updatedSubscriberFollowing.subscriberDid,
+                qualifier: updatedSubscriberFollowing.qualifier,
+              },
+              ConditionExpression: 'rev = :rev',
+              ExpressionAttributeValues: { ':rev': lastRev },
+            },
+          };
     const writeCommand: TransactWriteCommandInput = {
       TransactItems: [
-        {
-          Put: {
-            TableName,
-            Item: updatedSubscriberFollowing,
-            ...(lastRev === 0
-              ? {
-                  ConditionExpression: 'attribute_not_exists(subscriberDid)',
-                }
-              : {
-                  ConditionExpression: 'rev = :rev',
-                  ExpressionAttributeValues: { ':rev': lastRev },
-                }),
-          },
-        },
+        subscriberUpdate,
         ...batch.map((operation) => ({
           Update: {
             TableName,
@@ -141,7 +159,8 @@ export const saveUpdates = async (
             },
             ...(operation.operation === 'add'
               ? {
-                  UpdateExpression: 'SET handle = :handle ADD followedBy :one',
+                  UpdateExpression:
+                    'SET handle = :handle ADD followedBy :one REMOVE expiresAt',
                   ExpressionAttributeValues: {
                     ':one': 1,
                     ':handle': operation.following.handle,
@@ -176,6 +195,39 @@ export const getAggregateListRecord = async (
   return result.Item as AggregateListRecord | undefined;
 };
 
+export const batchGetAggregateListRecord = async (
+  userDids: ReadonlyArray<string>
+): Promise<Record<string, AggregateListRecord>> => {
+  const TableName = process.env.SUBSCRIBER_FOLLOWING_TABLE as string;
+
+  let keys: Array<Record<string, unknown>> = userDids.map((did) => ({
+    subscriberDid: 'aggregate',
+    qualifier: did,
+  }));
+  const records: Record<string, AggregateListRecord> = {};
+  while (keys.length > 0) {
+    const batch = keys.slice(0, 100);
+    keys = keys.slice(100);
+    const result = await ddbDocClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [TableName]: {
+            Keys: batch,
+          },
+        },
+      })
+    );
+    const unprocessedKeys = result.UnprocessedKeys?.[TableName]?.Keys;
+    if (unprocessedKeys != null) {
+      keys.push(...unprocessedKeys);
+    }
+    result.Responses?.[TableName]?.forEach(
+      (item) => (records[item.qualifier] = item as AggregateListRecord)
+    );
+  }
+  return records;
+};
+
 export const recordFollowingEntryId = async (
   followingDid: string,
   followingEntryUri: string,
@@ -199,22 +251,23 @@ export const recordFollowingEntryId = async (
   );
 };
 
-export const deleteAggregateListRecord = async (
-  followingDid: string
-): Promise<AggregateListRecord> => {
-  const result = await ddbDocClient.send(
-    new DeleteCommand({
+export const markAggregateListRecordForDeletion = async (
+  followingDid: string,
+  expiresAt: number
+) => {
+  await ddbDocClient.send(
+    new UpdateCommand({
       TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
       Key: {
         subscriberDid: 'aggregate',
         qualifier: followingDid,
       },
+      UpdateExpression: 'SET expiresAt = :expiresAt',
       ConditionExpression: 'followedBy = :zero',
       ExpressionAttributeValues: {
         ':zero': 0,
+        ':expiresAt': expiresAt,
       },
-      ReturnValues: 'ALL_OLD',
     })
   );
-  return result.Attributes as AggregateListRecord;
 };
