@@ -41,6 +41,15 @@ export const rawHandler = async (
     getSubscriberFollowingRecord(event.subscriberDid),
   ]);
   const operations: Array<FollowingUpdate> = [];
+  if (!existingRecord.selfRecorded) {
+    operations.push({
+      operation: 'self',
+      following: {
+        did: event.subscriberDid,
+        handle: '<SELF>',
+      },
+    });
+  }
   Object.entries(newFollowing)
     .filter(([did]) => !existingRecord.following[did]?.linkSaved)
     .forEach(([did, rest]) =>

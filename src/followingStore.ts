@@ -19,11 +19,12 @@ export type FollowingRecord = {
   subscriberDid: string;
   qualifier: 'subscriber' | string;
   following: FollowingSet;
+  selfRecorded?: true;
   rev: number;
 };
 
 export type FollowingUpdate = {
-  operation: 'add' | 'remove';
+  operation: 'add' | 'remove' | 'self';
   following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
 };
 
@@ -117,15 +118,18 @@ export const saveUpdates = async (
           ...entry,
           linkSaved: true,
         };
-      } else {
+      } else if (operation === 'remove') {
         delete updatedSubscriberFollowing.following[did];
+      } else if (operation === 'self') {
+        updatedSubscriberFollowing.selfRecorded = true;
       }
     }
 
     const subscriberUpdate:
       | { Put: PutCommandInput }
       | { Delete: DeleteCommandInput } =
-      Object.keys(updatedSubscriberFollowing.following).length > 0
+      Object.keys(updatedSubscriberFollowing.following).length > 0 ||
+      updatedSubscriberFollowing.selfRecorded
         ? {
             Put: {
               TableName,
@@ -212,6 +216,35 @@ export const saveUpdates = async (
                 },
               });
             }
+          } else if (operation.operation === 'self') {
+            updates.push(
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'ADD followedBy :one REMOVE expiresAt',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                  },
+                },
+              },
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: subscriberFollowing.subscriberDid,
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'SET following = :one',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                  },
+                },
+              }
+            );
           }
           return updates;
         }),
