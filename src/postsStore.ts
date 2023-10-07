@@ -67,20 +67,31 @@ export const savePostsBatch = async (
       operations = operations.slice(25);
 
       promises.push(
-        queue.add(() =>
-          ddbDocClient.send(
-            new BatchWriteCommand({
-              RequestItems: {
-                [TableName]: batch,
-              },
-            })
-          )
-        )
+        queue.add(async () => {
+          try {
+            console.log(`Saving Batch ${JSON.stringify(batch)}`);
+            return await ddbDocClient.send(
+              new BatchWriteCommand({
+                RequestItems: {
+                  [TableName]: batch,
+                },
+              })
+            );
+          } catch (e) {
+            console.log(JSON.stringify(batch));
+            throw e;
+          }
+        })
       );
     }
     for (const result of await Promise.all(promises)) {
       const unprocessedItems = result.UnprocessedItems?.[TableName];
       if (unprocessedItems != null) {
+        console.log(
+          `Retrying with unprocessed Items: ${
+            operations.length
+          } ${JSON.stringify(unprocessedItems)}`
+        );
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         operations.push(...unprocessedItems);
