@@ -147,8 +147,39 @@ functions:
           - dynamodb:GetItem
           - dynamodb:PutItem
           - dynamodb:UpdateItem
+          - dynamodb:DeleteItem
         Resource:
-          - !GetAtt SyncSubscriberQueueTable.Arn
+          - !GetAtt SubscriberFollowingTable.Arn
+
+  syncSubscriberFollowing-onFolUnfol:
+    handler: ./src/endpoints/syncSubscriberFollowing/onFollowUnfollow.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [SubscriberFollowingTable, StreamArn]
+          startingPosition: LATEST
+          batchSize: 1
+          maximumRetryAttempts: 5
+          filterPatterns:
+            - eventName: [INSERT]
+              dynamodb:
+                NewImage:
+                  subscriberDid:
+                    S: [aggregate]
+            - eventName: [MODIFY]
+              dynamodb:
+                NewImage:
+                  subscriberDid:
+                    S: [aggregate]
+                  followedBy:
+                    N: ["0"]
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-onFoUnfo-${self:provider.region}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:UpdateItem
+        Resource:
           - !GetAtt SubscriberFollowingTable.Arn
 
 resources:
@@ -184,6 +215,9 @@ resources:
             KeyType: RANGE
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True
 
     MuteWordsTable:
       Type: AWS::DynamoDB::Table
