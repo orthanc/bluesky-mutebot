@@ -48,7 +48,10 @@ This is a [Serverless](https://serverless.com/) Project designed to be deployed 
   * [getFeedSkeleton](src/endpoints/getFeedSkeleton/index.ts) - provides the feed skeleton required for a Bluesky feed. Essentially this will return a list of post urls for the `Mutebot - Following` feed for whatever user is getting their feed
 * Data sourcing Endpoints
   * [notificationListener](src/endpoints/notificationListener/index.ts) - polls for new notifications for the `@mutebot.bsky.social` to find mute and unmute commands
+  * [readFirehose](src/endpoints/readFirehose/index.ts) - polls the bluesky fire hose to populate the posts table with bleets by people followed by someone using mutebot 
   * [syncSubscriberFollowing](src/endpoints/syncSubscriberFollowing/index.ts) - triggered indirection by people looking at the Mutebot feed, this sources the list of people someone follows and saves them so we can provide their feed. At the moment this also indirectly triggers following all the persons followers
+* Internal processing functions
+  * [syncSubscriberFollowing-onFolUnfol](src/endpoints/syncSubscriberFollowing/onFollowUnfollow.ts) - listens for followed entries in SubscriberFollowingTable that no longer have any followers and sets an expiry so they'll be removed in 7 days
 
 ## Environment parameters
 
@@ -68,6 +71,7 @@ Amazon Dynamo DB is primarily used for storing data records. The tables are:
 * `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
   * A record for each user keyed by their `did` that saves the list of people they follow
   * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger are used to filter the firehose to only Bleets by people someone cares to follow
+* `PostsTable` - the posts for everyone followed by someone using mutebot that is used to populate the feed
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
 * `AppStatusTable` - used to store various state between lambda invocations. Keys are:
   * `firehose-cursor` - for the cursor of where to resume the firehose read

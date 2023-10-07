@@ -58,18 +58,6 @@ export async function* listPostChanges(opts: {
     console.log('max read time abort');
     controller.abort();
   }, opts.maxReadTimeMillis);
-  let lastActivityCheckSeq: number | undefined = undefined;
-  const maxInactivityInterval = setInterval(() => {
-    // Seems unlikely but we don't want to hang if we're getting no bleets down the firehose
-    // so if we go more than 500ms without a message abort
-    if (lastActivityCheckSeq === lastSeq) {
-      console.log('inactivity abort');
-      controller.abort();
-    } else {
-      lastActivityCheckSeq = lastSeq;
-    }
-  }, 1000);
-
   try {
     for await (const evt of subscription) {
       lastSeq = evt.seq;
@@ -95,7 +83,6 @@ export async function* listPostChanges(opts: {
     }
   } finally {
     clearTimeout(maxReadTimeTimeout);
-    clearInterval(maxInactivityInterval);
   }
 
   if (lastSeq != null && lastTime != null) {

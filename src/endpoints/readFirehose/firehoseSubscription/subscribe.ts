@@ -81,6 +81,7 @@ export type Operations<T = Record<string, unknown>> = {
 
 export type CreateOp<T> = {
   op: 'create';
+  type: string;
   uri: string;
   cid: string;
   author: string;
@@ -93,7 +94,7 @@ export type DeleteOp = {
   author: string;
 };
 
-const ids = {
+export const ids = {
   ComAtprotoSyncSubscribeRepos: 'com.atproto.sync.subscribeRepos',
   AppBskyFeedPost: 'app.bsky.feed.post',
   AppBskyFeedRepost: 'app.bsky.feed.repost',
@@ -159,6 +160,7 @@ const getOpsByType = async (evt: Commit): Promise<OperationsByType> => {
       const recordBytes = car.blocks.get(op.cid);
       const create: Omit<CreateOp<unknown>, 'record'> = {
         op: 'create',
+        type: collection,
         uri,
         cid: op.cid.toString(),
         author: evt.repo,
