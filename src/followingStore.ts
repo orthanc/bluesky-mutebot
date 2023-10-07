@@ -17,14 +17,14 @@ import { FollowingEntry, FollowingSet } from './types';
 
 export type FollowingRecord = {
   subscriberDid: string;
-  qualifier: 'subscriber' | 'aggregate';
+  qualifier: 'subscriber' | string;
   following: FollowingSet;
   rev: number;
 };
 
 export type FollowingUpdate = {
   operation: 'add' | 'remove';
-  following: FollowingEntry;
+  following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
 };
 
 export type AggregateListRecord = {
@@ -98,8 +98,8 @@ export const saveUpdates = async (
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 99);
-    remainingOperations = remainingOperations.slice(99);
+    const batch = remainingOperations.slice(0, 49);
+    remainingOperations = remainingOperations.slice(49);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -109,10 +109,14 @@ export const saveUpdates = async (
     };
     for (const {
       operation,
-      following: { did, ...entry },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      following: { did, onlyLink, noLink, ...entry },
     } of batch) {
       if (operation === 'add') {
-        updatedSubscriberFollowing.following[did] = entry;
+        updatedSubscriberFollowing.following[did] = {
+          ...entry,
+          linkSaved: true,
+        };
       } else {
         delete updatedSubscriberFollowing.following[did];
       }
@@ -150,30 +154,67 @@ export const saveUpdates = async (
     const writeCommand: TransactWriteCommandInput = {
       TransactItems: [
         subscriberUpdate,
-        ...batch.map((operation) => ({
-          Update: {
-            TableName,
-            Key: {
-              subscriberDid: 'aggregate',
-              qualifier: operation.following.did,
-            },
-            ...(operation.operation === 'add'
-              ? {
+        ...batch.flatMap((operation) => {
+          const updates: TransactWriteCommandInput['TransactItems'] = [];
+          if (operation.operation === 'add') {
+            if (!operation.following.onlyLink) {
+              updates.push({
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: operation.following.did,
+                  },
                   UpdateExpression:
                     'SET handle = :handle ADD followedBy :one REMOVE expiresAt',
                   ExpressionAttributeValues: {
                     ':one': 1,
                     ':handle': operation.following.handle,
                   },
-                }
-              : {
-                  UpdateExpression: 'ADD followedBy :negOne',
-                  ExpressionAttributeValues: {
-                    ':negOne': -1,
+                },
+              });
+            }
+            updates.push({
+              Update: {
+                TableName,
+                Key: {
+                  subscriberDid: operation.following.did,
+                  qualifier: subscriberFollowing.subscriberDid,
+                },
+                UpdateExpression: 'SET following = :one',
+                ExpressionAttributeValues: {
+                  ':one': 1,
+                },
+              },
+            });
+          } else if (operation.operation === 'remove') {
+            updates.push({
+              Update: {
+                TableName,
+                Key: {
+                  subscriberDid: 'aggregate',
+                  qualifier: operation.following.did,
+                },
+                UpdateExpression: 'ADD followedBy :negOne',
+                ExpressionAttributeValues: {
+                  ':negOne': -1,
+                },
+              },
+            });
+            if (!operation.following.noLink) {
+              updates.push({
+                Delete: {
+                  TableName,
+                  Key: {
+                    subscriberDid: operation.following.did,
+                    qualifier: subscriberFollowing.subscriberDid,
                   },
-                }),
-          },
-        })),
+                },
+              });
+            }
+          }
+          return updates;
+        }),
       ],
     };
     await ddbDocClient.send(new TransactWriteCommand(writeCommand));

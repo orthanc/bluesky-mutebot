@@ -42,15 +42,25 @@ export const rawHandler = async (
   ]);
   const operations: Array<FollowingUpdate> = [];
   Object.entries(newFollowing)
-    .filter(([did]) => !existingRecord.following[did])
+    .filter(([did]) => !existingRecord.following[did]?.linkSaved)
     .forEach(([did, rest]) =>
-      operations.push({ operation: 'add', following: { did, ...rest } })
+      operations.push({
+        operation: 'add',
+        following: {
+          did,
+          ...rest,
+          onlyLink: existingRecord.following[did] != null,
+        },
+      })
     );
 
   Object.entries(existingRecord.following)
     .filter(([did]) => !newFollowing[did])
     .forEach(([did, rest]) =>
-      operations.push({ operation: 'remove', following: { did, ...rest } })
+      operations.push({
+        operation: 'remove',
+        following: { did, ...rest, noLink: !rest.linkSaved },
+      })
     );
 
   await saveUpdates(existingRecord, operations);
