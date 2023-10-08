@@ -79,17 +79,16 @@ const processBatch = async (
             }
           });
         }
-        const resolvedStatus = isReply ? 'UNRESOLVED' : 'RESOLVED';
         return [
           {
             uri: post.uri,
             createdAt: post.record.createdAt,
             author: post.author,
             type: 'post',
-            resolvedStatus,
             expiresAt,
             ...(isReply
               ? {
+                  resolvedStatus: 'UNRESOLVED',
                   isReply,
                   // @ts-ignore
                   replyRootUri: post.record.reply?.root?.uri,

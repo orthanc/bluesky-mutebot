@@ -9,6 +9,8 @@ import {
   GetCommand,
   PutCommand,
   PutCommandInput,
+  QueryCommand,
+  QueryCommandOutput,
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
@@ -344,4 +346,28 @@ export const markAggregateListRecordForDeletion = async (
       },
     })
   );
+};
+
+export const listFollowedBy = async (authorDid: string) => {
+  const result: Array<string> = [];
+  let cursor: Record<string, unknown> | undefined = undefined;
+  do {
+    const records: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
+        KeyConditionExpression: 'subscriberDid = :authorDid',
+        ExpressionAttributeValues: {
+          ':authorDid': authorDid,
+        },
+        ExclusiveStartKey: cursor,
+      })
+    );
+    cursor = records.LastEvaluatedKey;
+    (records.Items ?? []).forEach((item) => {
+      if (item.qualifier !== 'subscriber') {
+        result.push(item.qualifier);
+      }
+    });
+  } while (cursor != null);
+  return result;
 };
