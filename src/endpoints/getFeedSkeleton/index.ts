@@ -15,6 +15,7 @@ import {
   QueryCommand,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
+import { listFeed } from '../../postsStore';
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -64,8 +65,45 @@ export const rawHandler = async (
     }
   );
 
+  if (requesterDid !== 'did:plc:crngjmsdh3zpuhmd5gtgwx6q') {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        feed: [
+          {
+            post: 'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3karzmn5bdp26',
+          },
+        ],
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    };
+  }
+
   console.log({ requesterDid });
-  const cursor = (event.queryStringParameters ?? {}).cursor;
+  const {
+    cursor,
+    feed,
+    limit: limitString,
+  } = event.queryStringParameters ?? {};
+  let limit = limitString == null ? -1 : parseInt(limitString);
+  if (limit == null || limit <= 0) {
+    limit = 30;
+  }
+
+  const feedContent = await listFeed(requesterDid, limit, cursor);
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      feed: feedContent.posts.map((post) => ({ post: post.uri })),
+      cursor: feedContent.cursor,
+    }),
+    headers: {
+      'content-type': 'application/json',
+    },
+  };
+
   const [agent, following, muteWords] = await Promise.all([
     getBskyAgent(),
     getSubscriberFollowingRecord(requesterDid),

@@ -366,3 +366,34 @@ export const addAuthorToFeed = async (
   }
   console.log(`Added ${postsToAdd.length} by ${author} from ${subscriberDid}`);
 };
+
+export const listFeed = async (
+  subscriberDid: string,
+  limit: number,
+  cursor: string | undefined
+) => {
+  const TableName = process.env.FEED_TABLE as string;
+
+  const records: QueryCommandOutput = await ddbDocClient.send(
+    new QueryCommand({
+      TableName: TableName,
+      IndexName: 'ByCreatedAt',
+      KeyConditionExpression: 'subscriberDid = :subscriberDid',
+      ExpressionAttributeValues: {
+        ':subscriberDid': subscriberDid,
+      },
+      ScanIndexForward: false,
+      ExclusiveStartKey: cursor == null ? undefined : JSON.parse(atob(cursor)),
+      Limit: limit,
+    })
+  );
+  console.log(records.LastEvaluatedKey);
+
+  return {
+    cursor:
+      records.LastEvaluatedKey == null
+        ? undefined
+        : btoa(JSON.stringify(records.LastEvaluatedKey)),
+    posts: (records.Items ?? []).map((item) => ({ uri: item.uri })),
+  };
+};

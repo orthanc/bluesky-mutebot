@@ -76,6 +76,8 @@ functions:
           - dynamodb:Query
         Resource:
           - !GetAtt MuteWordsTable.Arn
+          - !GetAtt FeedTable.Arn
+          - !Sub "${FeedTable.Arn}/*"
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
