@@ -159,6 +159,12 @@ functions:
           - dynamodb:BatchWriteItem
         Resource:
           - !GetAtt FeedTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FeedTable.Arn
+          - !Sub "${FeedTable.Arn}/*"
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
@@ -208,6 +214,13 @@ functions:
                     S: [aggregate]
                   followedBy:
                     N: ["0"]
+            - eventName: [INSERT, REMOVE]
+              dynamodb:
+                Keys:
+                  subscriberDid:
+                    S: [ { "anything-but": aggregate } ]
+                  qualifier:
+                    S: [ { "anything-but": subscriber } ]
     iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-onFoUnfo-${self:provider.region}
     iamRoleStatements:
       - Effect: "Allow"
@@ -215,6 +228,19 @@ functions:
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:BatchWriteItem
+        Resource:
+          - !GetAtt FeedTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt FeedTable.Arn
+          - !Sub "${FeedTable.Arn}/*"
+          - !GetAtt PostsTable.Arn
+          - !Sub "${PostsTable.Arn}/*"
 
 resources:
   Resources:
@@ -264,6 +290,8 @@ resources:
             AttributeType: S
           - AttributeName: createdAt
             AttributeType: S
+          - AttributeName: author
+            AttributeType: S
         BillingMode: PAY_PER_REQUEST
         KeySchema:
           - AttributeName: uri
@@ -277,6 +305,16 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
+          - IndexName: ByAuthor
+            KeySchema:
+              - AttributeName: author
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: INCLUDE
+              NonKeyAttributes:
+                - expiresAt
         StreamSpecification:
           StreamViewType: NEW_IMAGE
         TimeToLiveSpecification:
@@ -293,6 +331,8 @@ resources:
           - AttributeName: uri
             AttributeType: S
           - AttributeName: createdAt
+            AttributeType: S
+          - AttributeName: author
             AttributeType: S
         BillingMode: PAY_PER_REQUEST
         KeySchema:
@@ -315,6 +355,14 @@ resources:
               - AttributeName: uri
                 KeyType: HASH
               - AttributeName: subscriberDid
+                KeyType: RANGE
+            Projection:
+              ProjectionType: KEYS_ONLY
+          - IndexName: ByAuthor
+            KeySchema:
+              - AttributeName: subscriberDid
+                KeyType: HASH
+              - AttributeName: author
                 KeyType: RANGE
             Projection:
               ProjectionType: KEYS_ONLY

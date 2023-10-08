@@ -115,6 +115,7 @@ export const addToFeeds = async (
         Item: {
           subscriberDid,
           uri: post.uri,
+          author: post.author,
           createdAt: post.createdAt,
           expiresAt: post.expiresAt,
         },
@@ -222,4 +223,146 @@ export const removeFromFeeds = async (postUri: string) => {
     }
   }
   console.log(`Deleted ${postUri} to ${feedsToRemoveFrom.length} feeds`);
+};
+
+export const removeAuthorFromFeed = async (
+  subscriberDid: string,
+  author: string
+) => {
+  const TableName = process.env.FEED_TABLE as string;
+
+  const postUrisToRemove: Array<string> = [];
+  let cursor: Record<string, unknown> | undefined = undefined;
+  do {
+    const records: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName,
+        IndexName: 'ByAuthor',
+        KeyConditionExpression:
+          'subscriberDid = :subscriberDid AND author = :author',
+        ExpressionAttributeValues: {
+          ':subscriberDid': subscriberDid,
+          ':author': author,
+        },
+        ExclusiveStartKey: cursor,
+      })
+    );
+    cursor = records.LastEvaluatedKey;
+    (records.Items ?? []).forEach((item) => postUrisToRemove.push(item.uri));
+  } while (cursor != null);
+
+  let operations = postUrisToRemove.map(
+    (uri): { DeleteRequest: { Key: Record<string, unknown> } } => ({
+      DeleteRequest: {
+        Key: {
+          subscriberDid,
+          uri,
+        },
+      },
+    })
+  );
+  while (operations.length > 0) {
+    const promises: Array<Promise<BatchWriteCommandOutput>> = [];
+    while (operations.length > 0) {
+      const batch = operations.slice(0, 25);
+      operations = operations.slice(25);
+
+      promises.push(
+        queue.add(async () => {
+          try {
+            return await ddbDocClient.send(
+              new BatchWriteCommand({
+                RequestItems: {
+                  [TableName]: batch,
+                },
+              })
+            );
+          } catch (e) {
+            console.log(JSON.stringify(batch));
+            throw e;
+          }
+        })
+      );
+    }
+    for (const result of await Promise.all(promises)) {
+      const unprocessedItems = result.UnprocessedItems?.[TableName];
+      if (unprocessedItems != null) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        operations.push(...unprocessedItems);
+      }
+    }
+  }
+  console.log(
+    `Deleted ${postUrisToRemove.length} by ${author} from ${subscriberDid}`
+  );
+};
+
+export const addAuthorToFeed = async (
+  subscriberDid: string,
+  author: string
+) => {
+  const PostsTableName = process.env.POSTS_TABLE as string;
+  const TableName = process.env.FEED_TABLE as string;
+
+  const records: QueryCommandOutput = await ddbDocClient.send(
+    new QueryCommand({
+      TableName: PostsTableName,
+      IndexName: 'ByAuthor',
+      KeyConditionExpression: 'author = :author',
+      ExpressionAttributeValues: {
+        ':author': author,
+      },
+      Limit: 100,
+    })
+  );
+  const postsToAdd = (records.Items ?? []) as Array<
+    Pick<PostTableRecord, 'uri' | 'author' | 'createdAt' | 'expiresAt'>
+  >;
+  let operations = postsToAdd.map(
+    (post): { PutRequest: { Item: Record<string, unknown> } } => ({
+      PutRequest: {
+        Item: {
+          subscriberDid,
+          uri: post.uri,
+          author: post.author,
+          createdAt: post.createdAt,
+          expiresAt: post.expiresAt,
+        },
+      },
+    })
+  );
+  while (operations.length > 0) {
+    const promises: Array<Promise<BatchWriteCommandOutput>> = [];
+    while (operations.length > 0) {
+      const batch = operations.slice(0, 25);
+      operations = operations.slice(25);
+
+      promises.push(
+        queue.add(async () => {
+          try {
+            return await ddbDocClient.send(
+              new BatchWriteCommand({
+                RequestItems: {
+                  [TableName]: batch,
+                },
+              })
+            );
+          } catch (e) {
+            console.log(JSON.stringify(batch));
+            throw e;
+          }
+        })
+      );
+    }
+    for (const result of await Promise.all(promises)) {
+      const unprocessedItems = result.UnprocessedItems?.[TableName];
+      if (unprocessedItems != null) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        operations.push(...unprocessedItems);
+      }
+    }
+  }
+  console.log(`Added ${postsToAdd.length} by ${author} from ${subscriberDid}`);
 };
