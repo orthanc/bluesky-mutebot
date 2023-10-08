@@ -71,6 +71,7 @@ Amazon Dynamo DB is primarily used for storing data records. The tables are:
 * `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
   * A record for each user keyed by their `did` that saves the list of people they follow
   * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger are used to filter the firehose to only Bleets by people someone cares to follow
+  * Records for each pair of subscriber / following with following as the partition key and subscriber as the range key to allow finding who follows a particular account when distributing posts
 * `PostsTable` - the posts for everyone followed by someone using mutebot that is used to populate the feed
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
 * `AppStatusTable` - used to store various state between lambda invocations. Keys are:
