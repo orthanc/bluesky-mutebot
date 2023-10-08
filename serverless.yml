@@ -106,7 +106,7 @@ functions:
   readFirehose:
     handler: ./src/endpoints/readFirehose/index.handler
     timeout: 240
-    memorySize: 512
+    memorySize: 1024
     events:
       - schedule:
           rate: rate(5 minutes)
