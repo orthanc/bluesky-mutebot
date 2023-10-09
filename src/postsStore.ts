@@ -1,8 +1,10 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
+  BatchGetCommand,
   BatchWriteCommand,
   BatchWriteCommandOutput,
   DynamoDBDocumentClient,
+  PutCommand,
   QueryCommand,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
@@ -17,6 +19,7 @@ export type PostEntry = {
   isReply?: true;
   replyRootUri?: string;
   replyRootAuthorDid?: string;
+  replyRootTextEntries?: Array<string>;
   replyParentUri?: string;
   replyParentAuthorDid?: string;
   replyParentTextEntries?: Array<string>;
@@ -29,7 +32,7 @@ export type PostTableRecord = {
   uri: string;
   createdAt: string;
   author: string;
-  resolvedStatus?: 'UNRESOLVED';
+  resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE';
   expiresAt: number;
 } & (
   | ({ type: 'post' } & PostEntry)
@@ -38,6 +41,50 @@ export type PostTableRecord = {
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+export const getPosts = async (
+  postUris: Array<string>
+): Promise<Record<string, PostTableRecord>> => {
+  const TableName = process.env.POSTS_TABLE as string;
+  const result: Record<string, PostTableRecord> = {};
+  let keys: Array<Record<string, unknown>> = postUris.map((uri) => ({
+    uri,
+  }));
+  while (keys.length > 0) {
+    const batch = keys.slice(0, 25);
+    keys = keys.slice(25);
+    const response = await ddbDocClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [TableName]: {
+            Keys: batch,
+          },
+        },
+      })
+    );
+    const unprocessedKeys = response.UnprocessedKeys?.[TableName]?.Keys;
+    if (unprocessedKeys != null) {
+      keys.push(...unprocessedKeys);
+    }
+    const items = response.Responses?.[TableName];
+    if (items != null) {
+      items.forEach((item) => {
+        result[item.uri] = item as PostTableRecord;
+      });
+    }
+  }
+  return result;
+};
+
+export const savePost = async (post: PostTableRecord) => {
+  const TableName = process.env.POSTS_TABLE as string;
+  await ddbDocClient.send(
+    new PutCommand({
+      TableName,
+      Item: post,
+    })
+  );
+};
 
 export const savePostsBatch = async (
   posts: Array<PostTableRecord>,

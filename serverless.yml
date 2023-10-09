@@ -168,6 +168,31 @@ functions:
           - !GetAtt FeedTable.Arn
           - !Sub "${FeedTable.Arn}/*"
 
+  readFirehose-rslvPosts:
+    handler: ./src/endpoints/readFirehose/resolvePosts.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [PostsTable, StreamArn]
+          startingPosition: LATEST
+          batchSize: 1
+          maximumRetryAttempts: 5
+          filterPatterns:
+            - eventName: [INSERT]
+              dynamodb:
+                NewImage:
+                  resolvedStatus:
+                    S: [UNRESOLVED]
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:BatchGetItem
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt PostsTable.Arn
+
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
     events:	
