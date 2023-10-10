@@ -35,9 +35,7 @@ const addUrisToLoad = (
       urisToLoad.add(unresolvedPost.replyRootUri);
     }
   } else if (unresolvedPost.type === 'repost') {
-    if (unresolvedPost.post == null) {
-      urisToLoad.add(unresolvedPost.repostedPostUri);
-    }
+    urisToLoad.add(unresolvedPost.repostedPostUri);
   }
 };
 
@@ -77,12 +75,7 @@ const populateResolvedPost = (
     }
   } else if (newPost.type === 'repost') {
     console.log(`Resolving repost ${unresolvedPost.uri}`);
-    if (resolvedPosts[newPost.repostedPostUri]) {
-      const repostedPost = resolvedPosts[newPost.repostedPostUri];
-      if (repostedPost.type === 'post') {
-        newPost.post = repostedPost;
-      }
-    } else {
+    if (resolvedPosts[newPost.repostedPostUri] == null) {
       newPost.resolvedStatus = 'EXTERNAL_RESOLVE';
     }
   }

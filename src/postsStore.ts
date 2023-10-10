@@ -12,21 +12,7 @@ import PQueue from 'p-queue';
 
 const queue = new PQueue({ concurrency: 3 });
 
-export type PostEntry = {
-  uri: string;
-  createdAt: string;
-  author: string;
-  isReply?: true;
-  replyRootUri?: string;
-  replyRootAuthorDid?: string;
-  replyRootTextEntries?: Array<string>;
-  replyParentUri?: string;
-  replyParentAuthorDid?: string;
-  replyParentTextEntries?: Array<string>;
-  startsWithMention?: true;
-  mentionedDids: Array<string>;
-  textEntries: Array<string>;
-};
+export type PostEntry = {};
 
 export type PostTableRecord = {
   uri: string;
@@ -35,8 +21,23 @@ export type PostTableRecord = {
   resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
   expiresAt: number;
 } & (
-  | ({ type: 'post' } & PostEntry)
-  | { type: 'repost'; repostedPostUri: string; post?: PostEntry }
+  | {
+      type: 'post';
+      uri: string;
+      createdAt: string;
+      author: string;
+      isReply?: true;
+      replyRootUri?: string;
+      replyRootAuthorDid?: string;
+      replyRootTextEntries?: Array<string>;
+      replyParentUri?: string;
+      replyParentAuthorDid?: string;
+      replyParentTextEntries?: Array<string>;
+      startsWithMention?: true;
+      mentionedDids: Array<string>;
+      textEntries: Array<string>;
+    }
+  | { type: 'repost'; repostedPostUri: string }
 );
 
 const client = new DynamoDBClient({});
