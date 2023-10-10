@@ -143,6 +143,8 @@ export const rawHandler = async (event: Event): Promise<void> => {
         new SendMessageCommand({
           QueueUrl: process.env.EXTERNAL_RESOLVE_QUEUE_URL as string,
           MessageBody: JSON.stringify(newPost),
+          MessageGroupId: 'external-resolve',
+          MessageDeduplicationId: newPost.uri,
         })
       );
     }
