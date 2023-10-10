@@ -32,7 +32,7 @@ export type PostTableRecord = {
   uri: string;
   createdAt: string;
   author: string;
-  resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE';
+  resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
   expiresAt: number;
 } & (
   | ({ type: 'post' } & PostEntry)
@@ -41,6 +41,24 @@ export type PostTableRecord = {
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+export const getPostsForExternalResolve = async (
+  limit: number
+): Promise<Array<PostTableRecord>> => {
+  const TableName = process.env.POSTS_TABLE as string;
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      IndexName: 'ByResolvedStatusAndCreatedAt',
+      KeyConditionExpression: 'resolvedStatus = :externalResolve',
+      ExpressionAttributeValues: {
+        ':externalResolve': 'EXTERNAL_RESOLVE',
+      },
+      Limit: limit,
+    })
+  );
+  return (result.Items ?? []) as Array<PostTableRecord>;
+};
 
 export const getPosts = async (
   postUris: Array<string>

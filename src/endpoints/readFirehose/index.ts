@@ -9,6 +9,7 @@ import {
   batchGetAggregateListRecord,
 } from '../../followingStore';
 import { PostTableRecord, savePostsBatch } from '../../postsStore';
+import { postToPostTableRecord } from './postToPostTableRecord';
 
 const processBatch = async (
   resolvedDids: Record<string, AggregateListRecord | false>,
@@ -47,60 +48,7 @@ const processBatch = async (
         ];
       } else if (post.type === ids.AppBskyFeedPost) {
         postsSaved++;
-        const textEntries: Array<string> = [];
-        if (post.record.text != null) {
-          textEntries.push(post.record.text as string);
-        }
-        // @ts-expect-error
-        if (post.record.embed?.images != null) {
-          // @ts-expect-error
-          post.record.embed.images.forEach((image) => {
-            if (image.alt) {
-              textEntries.push(image.alt);
-            }
-          });
-        }
-        const isReply = post.record.reply != null;
-        let startsWithMention = false;
-        const mentionedDids: Array<string> = [];
-        if (post.record.facets != null) {
-          // @ts-expect-error
-          post.record.facets.forEach((facet) => {
-            if (facet.features != null) {
-              // @ts-expect-error
-              facet.features.forEach((feature) => {
-                if (feature['$type'] === 'app.bsky.richtext.facet#mention') {
-                  mentionedDids.push(feature.did);
-                  if (facet.index?.byteStart === 0) {
-                    startsWithMention = true;
-                  }
-                }
-              });
-            }
-          });
-        }
-        return [
-          {
-            uri: post.uri,
-            createdAt: post.record.createdAt,
-            author: post.author,
-            type: 'post',
-            expiresAt,
-            ...(isReply
-              ? {
-                  resolvedStatus: 'UNRESOLVED',
-                  isReply,
-                  // @ts-ignore
-                  replyRootUri: post.record.reply?.root?.uri,
-                  // @ts-ignore
-                  replyParentUri: post.record.reply?.parent?.uri,
-                }
-              : undefined),
-            ...(startsWithMention ? { startsWithMention } : undefined),
-            mentionedDids,
-            textEntries,
-          },
-        ];
+        return [postToPostTableRecord(post as CreateOp<PostRecord>, expiresAt)];
       }
       return [];
     });
