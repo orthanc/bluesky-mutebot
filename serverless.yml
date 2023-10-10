@@ -37,7 +37,7 @@ custom:
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
-  feedTable: ${self:service}-${self:provider.stage}-feed
+  feedTable: ${self:service}-${self:provider.stage}-feed-v2
   externalResolveQueue: ${self:service}-${self:provider.stage}-external-resolve.fifo
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
@@ -77,8 +77,8 @@ functions:
           - dynamodb:Query
         Resource:
           - !GetAtt MuteWordsTable.Arn
-          - !GetAtt FeedTable.Arn
-          - !Sub "${FeedTable.Arn}/*"
+          - !GetAtt FeedTableV2.Arn
+          - !Sub "${FeedTableV2.Arn}/*"
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
@@ -161,13 +161,13 @@ functions:
         Action:
           - dynamodb:BatchWriteItem
         Resource:
-          - !GetAtt FeedTable.Arn
+          - !GetAtt FeedTableV2.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt FeedTable.Arn
-          - !Sub "${FeedTable.Arn}/*"
+          - !GetAtt FeedTableV2.Arn
+          - !Sub "${FeedTableV2.Arn}/*"
 
   readFirehose-rslvPosts:
     handler: ./src/endpoints/readFirehose/resolvePosts.handler
@@ -275,13 +275,13 @@ functions:
         Action:
           - dynamodb:BatchWriteItem
         Resource:
-          - !GetAtt FeedTable.Arn
+          - !GetAtt FeedTableV2.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt FeedTable.Arn
-          - !Sub "${FeedTable.Arn}/*"
+          - !GetAtt FeedTableV2.Arn
+          - !Sub "${FeedTableV2.Arn}/*"
           - !GetAtt PostsTable.Arn
           - !Sub "${PostsTable.Arn}/*"
 
@@ -358,13 +358,25 @@ resources:
               ProjectionType: INCLUDE
               NonKeyAttributes:
                 - expiresAt
+          - IndexName: ByAuthorV2
+            KeySchema:
+              - AttributeName: author
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: INCLUDE
+              NonKeyAttributes:
+                - expiresAt
+                - type
+                - repostedPostUri
         StreamSpecification:
           StreamViewType: NEW_IMAGE
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: True
 
-    FeedTable:
+    FeedTableV2:
       Type: AWS::DynamoDB::Table
       Properties:
         TableName: ${self:custom.feedTable}
@@ -391,7 +403,10 @@ resources:
               - AttributeName: createdAt
                 KeyType: RANGE
             Projection:
-              ProjectionType: KEYS_ONLY
+              ProjectionType: INCLUDE
+              NonKeyAttributes:
+                - repostedPostUri
+                - type
         GlobalSecondaryIndexes:
           - IndexName: ByPostUri
             KeySchema:

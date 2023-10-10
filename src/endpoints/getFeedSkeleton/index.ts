@@ -96,7 +96,16 @@ export const rawHandler = async (
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: feedContent.posts.map((post) => ({ post: post.uri })),
+      feed: feedContent.posts.map((post) =>
+        post.type === 'post'
+          ? { post: post.uri }
+          : {
+              post: post.repostedPostUri,
+              reason: {
+                repost: post.uri,
+              },
+            }
+      ),
       cursor: feedContent.cursor,
     }),
     headers: {

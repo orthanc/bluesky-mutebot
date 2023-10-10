@@ -12,8 +12,6 @@ import PQueue from 'p-queue';
 
 const queue = new PQueue({ concurrency: 3 });
 
-export type PostEntry = {};
-
 export type PostTableRecord = {
   uri: string;
   createdAt: string;
@@ -39,6 +37,12 @@ export type PostTableRecord = {
     }
   | { type: 'repost'; repostedPostUri: string }
 );
+
+export type FeedEntry = Pick<
+  PostTableRecord,
+  'uri' | 'author' | 'createdAt' | 'expiresAt'
+> &
+  ({ type: 'post' } | { type: 'repost'; repostedPostUri: string });
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -170,6 +174,20 @@ export const savePostsBatch = async (
   console.log(`Saved ${posts.length} posts and ${deletes.length} deletes`);
 };
 
+const postToFeedEntry = (
+  subscriberDid: string,
+  post: FeedEntry
+): { subscriberDid: string } & FeedEntry => ({
+  subscriberDid,
+  uri: post.uri,
+  author: post.author,
+  createdAt: post.createdAt,
+  expiresAt: post.expiresAt,
+  ...(post.type === 'repost'
+    ? { type: 'repost', repostedPostUri: post.repostedPostUri }
+    : { type: 'post' }),
+});
+
 export const addToFeeds = async (
   post: PostTableRecord,
   followedBy: Array<string>
@@ -178,13 +196,7 @@ export const addToFeeds = async (
   let operations = followedBy.map(
     (subscriberDid): { PutRequest: { Item: Record<string, unknown> } } => ({
       PutRequest: {
-        Item: {
-          subscriberDid,
-          uri: post.uri,
-          author: post.author,
-          createdAt: post.createdAt,
-          expiresAt: post.expiresAt,
-        },
+        Item: postToFeedEntry(subscriberDid, post),
       },
     })
   );
@@ -374,7 +386,7 @@ export const addAuthorToFeed = async (
   const records: QueryCommandOutput = await ddbDocClient.send(
     new QueryCommand({
       TableName: PostsTableName,
-      IndexName: 'ByAuthor',
+      IndexName: 'ByAuthorV2',
       KeyConditionExpression: 'author = :author',
       ExpressionAttributeValues: {
         ':author': author,
@@ -382,19 +394,11 @@ export const addAuthorToFeed = async (
       Limit: 100,
     })
   );
-  const postsToAdd = (records.Items ?? []) as Array<
-    Pick<PostTableRecord, 'uri' | 'author' | 'createdAt' | 'expiresAt'>
-  >;
+  const postsToAdd = (records.Items ?? []) as Array<FeedEntry>;
   let operations = postsToAdd.map(
     (post): { PutRequest: { Item: Record<string, unknown> } } => ({
       PutRequest: {
-        Item: {
-          subscriberDid,
-          uri: post.uri,
-          author: post.author,
-          createdAt: post.createdAt,
-          expiresAt: post.expiresAt,
-        },
+        Item: postToFeedEntry(subscriberDid, post),
       },
     })
   );
@@ -437,7 +441,7 @@ export const listFeed = async (
   subscriberDid: string,
   limit: number,
   cursor: string | undefined
-) => {
+): Promise<{ cursor?: string; posts: Array<FeedEntry> }> => {
   const TableName = process.env.FEED_TABLE as string;
 
   const records: QueryCommandOutput = await ddbDocClient.send(
@@ -460,6 +464,6 @@ export const listFeed = async (
       records.LastEvaluatedKey == null
         ? undefined
         : btoa(JSON.stringify(records.LastEvaluatedKey)),
-    posts: (records.Items ?? []).map((item) => ({ uri: item.uri })),
+    posts: (records.Items ?? []) as Array<FeedEntry>,
   };
 };
