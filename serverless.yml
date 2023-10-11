@@ -90,28 +90,6 @@ functions:
         Resource:
           - !GetAtt SyncSubscriberQueueTable.Arn
 
-  notificationListener:
-    handler: ./src/endpoints/notificationListener/index.handler
-    events:
-      - schedule:
-          rate: rate(1 minute)
-          enabled: ${self:custom.enablePolling.${self:provider.stage}}
-    environment:
-      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:GetItem
-          - dynamodb:PutItem
-          - dynamodb:DeleteItem
-        Resource:
-          - !GetAtt MuteWordsTable.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:PutItem
-        Resource:
-          - !GetAtt SyncSubscriberQueueTable.Arn
-
   readFirehose:
     handler: ./src/endpoints/readFirehose/index.handler
     timeout: 240
