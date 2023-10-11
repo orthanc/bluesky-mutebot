@@ -115,8 +115,6 @@ export const rawHandler = async (
     if (post == null) return false;
     // should never happen, but for typing, if we get back a repost skip it
     if (post.type === 'repost') return false;
-    // Just incase there are posts in the feed by someone not being followed anymore
-    if (!followingDids.has(post.author)) return false;
     // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
     if (
       post.startsWithMention &&
