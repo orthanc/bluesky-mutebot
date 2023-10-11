@@ -354,16 +354,6 @@ resources:
                 KeyType: RANGE
             Projection:
               ProjectionType: ALL
-          - IndexName: ByAuthor
-            KeySchema:
-              - AttributeName: author
-                KeyType: HASH
-              - AttributeName: createdAt
-                KeyType: RANGE
-            Projection:
-              ProjectionType: INCLUDE
-              NonKeyAttributes:
-                - expiresAt
           - IndexName: ByAuthorV2
             KeySchema:
               - AttributeName: author
