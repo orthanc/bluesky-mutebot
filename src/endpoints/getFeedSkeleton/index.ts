@@ -14,12 +14,17 @@ import {
   QueryCommand,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
-import { getPosts, listFeed } from '../../postsStore';
+import { FeedEntry, getPosts, listFeed } from '../../postsStore';
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
+
+const SYNCING_FOLLOING_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiegyf3x2w';
+const NO_MORE_POSTS_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 
 const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
   const TableName = process.env.MUTE_WORDS_TABLE as string;
@@ -60,22 +65,6 @@ export const rawHandler = async (
     }
   );
 
-  if (requesterDid !== 'did:plc:crngjmsdh3zpuhmd5gtgwx6q') {
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        feed: [
-          {
-            post: 'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3karzmn5bdp26',
-          },
-        ],
-      }),
-      headers: {
-        'content-type': 'application/json',
-      },
-    };
-  }
-
   console.log({ requesterDid });
   const {
     cursor,
@@ -92,8 +81,27 @@ export const rawHandler = async (
 
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
-    cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
+    cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
+      ? triggerSubscriberSync(requesterDid)
+      : Promise.resolve(),
   ]);
+
+  if (Object.keys(following?.following ?? {}).length === 0) {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        feed: [
+          {
+            post: SYNCING_FOLLOING_POST,
+          },
+        ],
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    };
+  }
+
   const postUris = new Set<string>();
   feedContent.posts.forEach((post) => {
     post.type === 'post'
@@ -103,9 +111,7 @@ export const rawHandler = async (
   const loadedPosts = await getPosts(Array.from(postUris));
 
   const followingDids = new Set<string>();
-  Object.keys(following?.following ?? {}).forEach((did) =>
-    followingDids.add(did)
-  );
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
   const filteredFeedContent = feedContent.posts.filter((postRef) => {
     const post =
       loadedPosts[
@@ -158,6 +164,12 @@ export const rawHandler = async (
       return false;
     return true;
   });
+  if (feedContent.cursor == null) {
+    filteredFeedContent.push({
+      uri: NO_MORE_POSTS_POST,
+      type: 'post',
+    } as FeedEntry);
+  }
   return {
     statusCode: 200,
     body: JSON.stringify({
