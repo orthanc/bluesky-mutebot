@@ -9,6 +9,8 @@ import {
   GetCommand,
   PutCommand,
   PutCommandInput,
+  QueryCommand,
+  QueryCommandOutput,
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
@@ -17,14 +19,15 @@ import { FollowingEntry, FollowingSet } from './types';
 
 export type FollowingRecord = {
   subscriberDid: string;
-  qualifier: 'subscriber' | 'aggregate';
+  qualifier: 'subscriber' | string;
   following: FollowingSet;
+  selfRecorded?: true;
   rev: number;
 };
 
 export type FollowingUpdate = {
-  operation: 'add' | 'remove';
-  following: FollowingEntry;
+  operation: 'add' | 'remove' | 'self';
+  following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
 };
 
 export type AggregateListRecord = {
@@ -98,8 +101,8 @@ export const saveUpdates = async (
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 99);
-    remainingOperations = remainingOperations.slice(99);
+    const batch = remainingOperations.slice(0, 49);
+    remainingOperations = remainingOperations.slice(49);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -109,19 +112,26 @@ export const saveUpdates = async (
     };
     for (const {
       operation,
-      following: { did, ...entry },
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      following: { did, onlyLink, noLink, ...entry },
     } of batch) {
       if (operation === 'add') {
-        updatedSubscriberFollowing.following[did] = entry;
-      } else {
+        updatedSubscriberFollowing.following[did] = {
+          ...entry,
+          linkSaved: true,
+        };
+      } else if (operation === 'remove') {
         delete updatedSubscriberFollowing.following[did];
+      } else if (operation === 'self') {
+        updatedSubscriberFollowing.selfRecorded = true;
       }
     }
 
     const subscriberUpdate:
       | { Put: PutCommandInput }
       | { Delete: DeleteCommandInput } =
-      Object.keys(updatedSubscriberFollowing.following).length > 0
+      Object.keys(updatedSubscriberFollowing.following).length > 0 ||
+      updatedSubscriberFollowing.selfRecorded
         ? {
             Put: {
               TableName,
@@ -150,30 +160,96 @@ export const saveUpdates = async (
     const writeCommand: TransactWriteCommandInput = {
       TransactItems: [
         subscriberUpdate,
-        ...batch.map((operation) => ({
-          Update: {
-            TableName,
-            Key: {
-              subscriberDid: 'aggregate',
-              qualifier: operation.following.did,
-            },
-            ...(operation.operation === 'add'
-              ? {
+        ...batch.flatMap((operation) => {
+          const updates: TransactWriteCommandInput['TransactItems'] = [];
+          if (operation.operation === 'add') {
+            if (!operation.following.onlyLink) {
+              updates.push({
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: operation.following.did,
+                  },
                   UpdateExpression:
                     'SET handle = :handle ADD followedBy :one REMOVE expiresAt',
                   ExpressionAttributeValues: {
                     ':one': 1,
                     ':handle': operation.following.handle,
                   },
-                }
-              : {
-                  UpdateExpression: 'ADD followedBy :negOne',
-                  ExpressionAttributeValues: {
-                    ':negOne': -1,
+                },
+              });
+            }
+            updates.push({
+              Update: {
+                TableName,
+                Key: {
+                  subscriberDid: operation.following.did,
+                  qualifier: subscriberFollowing.subscriberDid,
+                },
+                UpdateExpression: 'SET following = :one',
+                ExpressionAttributeValues: {
+                  ':one': 1,
+                },
+              },
+            });
+          } else if (operation.operation === 'remove') {
+            updates.push({
+              Update: {
+                TableName,
+                Key: {
+                  subscriberDid: 'aggregate',
+                  qualifier: operation.following.did,
+                },
+                UpdateExpression: 'ADD followedBy :negOne',
+                ExpressionAttributeValues: {
+                  ':negOne': -1,
+                },
+              },
+            });
+            if (!operation.following.noLink) {
+              updates.push({
+                Delete: {
+                  TableName,
+                  Key: {
+                    subscriberDid: operation.following.did,
+                    qualifier: subscriberFollowing.subscriberDid,
                   },
-                }),
-          },
-        })),
+                },
+              });
+            }
+          } else if (operation.operation === 'self') {
+            updates.push(
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'ADD followedBy :one REMOVE expiresAt',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                  },
+                },
+              },
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: subscriberFollowing.subscriberDid,
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'SET following = :one',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                  },
+                },
+              }
+            );
+          }
+          return updates;
+        }),
       ],
     };
     await ddbDocClient.send(new TransactWriteCommand(writeCommand));
@@ -270,4 +346,28 @@ export const markAggregateListRecordForDeletion = async (
       },
     })
   );
+};
+
+export const listFollowedBy = async (authorDid: string) => {
+  const result: Array<string> = [];
+  let cursor: Record<string, unknown> | undefined = undefined;
+  do {
+    const records: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
+        KeyConditionExpression: 'subscriberDid = :authorDid',
+        ExpressionAttributeValues: {
+          ':authorDid': authorDid,
+        },
+        ExclusiveStartKey: cursor,
+      })
+    );
+    cursor = records.LastEvaluatedKey;
+    (records.Items ?? []).forEach((item) => {
+      if (item.qualifier !== 'subscriber') {
+        result.push(item.qualifier);
+      }
+    });
+  } while (cursor != null);
+  return result;
 };

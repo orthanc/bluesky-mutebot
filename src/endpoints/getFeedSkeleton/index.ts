@@ -3,8 +3,7 @@ import middy from '@middy/core';
 import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
-import { DidResolver, MemoryCache } from '@atproto/did-resolver';
-import { getBskyAgent } from '../../bluesky';
+import { DidResolver } from '@atproto/identity';
 import {
   getSubscriberFollowingRecord,
   triggerSubscriberSync,
@@ -15,15 +14,17 @@ import {
   QueryCommand,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
+import { FeedEntry, getPosts, listFeed } from '../../postsStore';
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
-const didCache = new MemoryCache();
-const didResolver = new DidResolver(
-  { plcUrl: 'https://plc.directory' },
-  didCache
-);
+const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
+
+const SYNCING_FOLLOING_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiegyf3x2w';
+const NO_MORE_POSTS_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 
 const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
   const TableName = process.env.MUTE_WORDS_TABLE as string;
@@ -65,57 +66,181 @@ export const rawHandler = async (
   );
 
   console.log({ requesterDid });
-  const cursor = (event.queryStringParameters ?? {}).cursor;
-  const [agent, following, muteWords] = await Promise.all([
-    getBskyAgent(),
+  const {
+    cursor,
+    feed,
+    limit: limitString,
+  } = event.queryStringParameters ?? {};
+  let limit = limitString == null ? -1 : parseInt(limitString);
+  if (limit == null || limit <= 0) {
+    limit = 30;
+  }
+
+  const [feedContent, following, muteWords] = await Promise.all([
+    listFeed(requesterDid, limit, cursor),
+
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
-    cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
+    cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
+      ? triggerSubscriberSync(requesterDid)
+      : Promise.resolve(),
   ]);
-  console.log({ muteWords });
-  const response7 =
-    following == null
-      ? { data: { feed: [], cursor: undefined } }
-      : await agent.getTimeline({
-          limit: 100,
-          cursor,
-        });
+
+  if (Object.keys(following?.following ?? {}).length === 0) {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        feed: [
+          {
+            post: SYNCING_FOLLOING_POST,
+          },
+        ],
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    };
+  }
+
+  const postUris = new Set<string>();
+  feedContent.posts.forEach((post) => {
+    post.type === 'post'
+      ? postUris.add(post.uri)
+      : postUris.add(post.repostedPostUri);
+  });
+  const loadedPosts = await getPosts(Array.from(postUris));
 
   const followingDids = new Set<string>();
-  Object.keys(following?.following ?? {}).forEach((did) =>
-    followingDids.add(did)
-  );
-
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
+  const filteredFeedContent = feedContent.posts.filter((postRef) => {
+    const post =
+      loadedPosts[
+        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+      ];
+    // exclude posts we can't find
+    if (post == null) return false;
+    // should never happen, but for typing, if we get back a repost skip it
+    if (post.type === 'repost') return false;
+    // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+    if (
+      post.startsWithMention &&
+      !post.mentionedDids.some((mentionedDid) =>
+        followingDids.has(mentionedDid)
+      )
+    )
+      return false;
+    // exclude replies that are to a non followed
+    if (
+      post.isReply &&
+      (post.replyParentAuthorDid == null ||
+        !followingDids.has(post.replyParentAuthorDid))
+    )
+      return false;
+    // Exclude posts with muted words
+    if (
+      post.textEntries.some((postText) =>
+        postText
+          .toLowerCase()
+          .split(/\s+/)
+          .some((word) =>
+            muteWords.some((mutedWord) => word.startsWith(mutedWord))
+          )
+      )
+    )
+      return false;
+    // Exclude replies to posts with muted words
+    if (
+      post.isReply &&
+      (post.replyParentTextEntries == null ||
+        post.replyParentTextEntries.some((postText) =>
+          postText
+            .toLowerCase()
+            .split(/\s+/)
+            .some((word) =>
+              muteWords.some((mutedWord) => word.startsWith(mutedWord))
+            )
+        ))
+    )
+      return false;
+    return true;
+  });
+  if (feedContent.cursor == null) {
+    filteredFeedContent.push({
+      uri: NO_MORE_POSTS_POST,
+      type: 'post',
+    } as FeedEntry);
+  }
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: response7.data.feed
-        .filter((item) => {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-expect-error
-          const postText: string | undefined = item.post.record.text;
-          return (
-            followingDids.has(item.post.author.did) &&
-            (item.reply == null ||
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore
-              followingDids.has(item.reply?.parent?.author?.did)) &&
-            (postText == null ||
-              !postText
-                .toLowerCase()
-                .split(/\s+/)
-                .some((word) =>
-                  muteWords.some((mutedWord) => word.startsWith(mutedWord))
-                ))
-          );
-        })
-        .map((item) => ({ post: item.post.uri })),
-      cursor: response7.data.cursor,
+      feed: filteredFeedContent.map((post) =>
+        post.type === 'post'
+          ? { post: post.uri }
+          : {
+              post: post.repostedPostUri,
+              reason: {
+                $type: 'app.bsky.feed.defs#skeletonReasonRepost',
+                repost: post.uri,
+              },
+            }
+      ),
+      cursor: feedContent.cursor,
     }),
     headers: {
       'content-type': 'application/json',
     },
   };
+
+  // const [agent, following, muteWords] = await Promise.all([
+  //   getBskyAgent(),
+  //   getSubscriberFollowingRecord(requesterDid),
+  //   getMuteWords(requesterDid),
+  //   cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
+  // ]);
+  // console.log({ muteWords });
+  // const response7 =
+  //   following == null
+  //     ? { data: { feed: [], cursor: undefined } }
+  //     : await agent.getTimeline({
+  //         limit: 100,
+  //         cursor,
+  //       });
+
+  // const followingDids = new Set<string>();
+  // Object.keys(following?.following ?? {}).forEach((did) =>
+  //   followingDids.add(did)
+  // );
+
+  // return {
+  //   statusCode: 200,
+  //   body: JSON.stringify({
+  //     feed: response7.data.feed
+  //       .filter((item) => {
+  //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //         // @ts-expect-error
+  //         const postText: string | undefined = item.post.record.text;
+  //         return (
+  //           followingDids.has(item.post.author.did) &&
+  //           (item.reply == null ||
+  //             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //             // @ts-ignore
+  //             followingDids.has(item.reply?.parent?.author?.did)) &&
+  //           (postText == null ||
+  //             !postText
+  //               .toLowerCase()
+  //               .split(/\s+/)
+  //               .some((word) =>
+  //                 muteWords.some((mutedWord) => word.startsWith(mutedWord))
+  //               ))
+  //         );
+  //       })
+  //       .map((item) => ({ post: item.post.uri })),
+  //     cursor: response7.data.cursor,
+  //   }),
+  //   headers: {
+  //     'content-type': 'application/json',
+  //   },
+  // };
 };
 
 export const handler = middy(rawHandler).use(httpHeaderNormalizer());

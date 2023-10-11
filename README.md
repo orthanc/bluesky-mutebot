@@ -1,7 +1,5 @@
 # Bluesky Mutebot
 
-**⚠️ Mutbot is not currently functional, see *Current Status* below**
-
 Mutebot is a project to provide a mute words functionality for [Bluesky](https://bsky.app) consisting of a custom feed that respects muted words and a bot to mute and unmute words.
 
 This is currently running using the [@mutebot.bsky.social](https://bsky.app/profile/mutebot.bsky.social).
@@ -15,6 +13,7 @@ The [Mutebot - Following](https://bsky.app/profile/did:plc:k626emd4xi4h3wxpd44s4
 * Replies to Bleets if the are both:
   * made by someone you follow
   * replying to someone you follow
+* Direct @'s (Bleets that start with @ing someone) are treated the same as replies
 
 The key difference from the Following feed is that this feed filters out Bleets that contain words you have muted.
 
@@ -30,16 +29,6 @@ To unmute a word Bleet:
 @mutebot.bsky.social unmute <one or more words you want to unmute>
 ```
 
-## Current Status
-
-**Mutebot is currently not working.**
-
-This version of the project was having Mutebot follow everyone in order to source Bleets to filter. This got out of hand and does not scale for any number of people.
-
-This current version is published more for reference and interest.
-
-Work is underway on updating Mutebot to use the Bluesky firehose to source Bleets which should make this a sustainable project.
-
 ## Technology Overview
 
 This is a [Serverless](https://serverless.com/) Project designed to be deployed with AWS Lambda. It consists of the following lambda functions:
@@ -47,10 +36,11 @@ This is a [Serverless](https://serverless.com/) Project designed to be deployed 
   * [did](src/endpoints/did/index.ts) - Serves `/.well-known/did.json` to declare the deployment as an XRPC server providing a Bluesky feed generator
   * [getFeedSkeleton](src/endpoints/getFeedSkeleton/index.ts) - provides the feed skeleton required for a Bluesky feed. Essentially this will return a list of post urls for the `Mutebot - Following` feed for whatever user is getting their feed
 * Data sourcing Endpoints
-  * [notificationListener](src/endpoints/notificationListener/index.ts) - polls for new notifications for the `@mutebot.bsky.social` to find mute and unmute commands
   * [readFirehose](src/endpoints/readFirehose/index.ts) - polls the bluesky fire hose to populate the posts table with bleets by people followed by someone using mutebot 
   * [syncSubscriberFollowing](src/endpoints/syncSubscriberFollowing/index.ts) - triggered indirection by people looking at the Mutebot feed, this sources the list of people someone follows and saves them so we can provide their feed. At the moment this also indirectly triggers following all the persons followers
-* Internal processing functions
+* Internal processing functions:
+  * [readFirehose-distPosts](src/endpoints/readFirehose/distributePosts.ts) - listens for new bleets being stored in the posts table and writes them into user specific feeds for everyone who follows the author. Also listens for any bleets that @ mutebot and processes the commands
+  * [readFirehose-rslvPosts](endpoints/readFirehose/resolvePosts.ts) - listens for bleets beint stored in the posts table that refer to other bleets (rebleets and replies) and pulls in the bleets they refer to so we can properly filter the feed
   * [syncSubscriberFollowing-onFolUnfol](src/endpoints/syncSubscriberFollowing/onFollowUnfollow.ts) - listens for followed entries in SubscriberFollowingTable that no longer have any followers and sets an expiry so they'll be removed in 7 days
 
 ## Environment parameters
@@ -71,10 +61,16 @@ Amazon Dynamo DB is primarily used for storing data records. The tables are:
 * `SubscriberFollowingTable` - the list of people who each user follows. This contains two types of record:
   * A record for each user keyed by their `did` that saves the list of people they follow
   * Records in the `aggregate` partition that are one record per person followed with a count of how man users follow them. These records trigger are used to filter the firehose to only Bleets by people someone cares to follow
+  * Records for each pair of subscriber / following with following as the partition key and subscriber as the range key to allow finding who follows a particular account when distributing posts
 * `PostsTable` - the posts for everyone followed by someone using mutebot that is used to populate the feed
+* `FeedTable` - a feed specific for each user, this indexes the Posts table based on who each user follows
 * `MuteWordsTable` - the list of mute words for each user. Partition key is the user's `did` with the range key being a muted word
 * `AppStatusTable` - used to store various state between lambda invocations. Keys are:
   * `firehose-cursor` - for the cursor of where to resume the firehose read
+
+## Other Resources
+
+* `ExternalResolveQueue` - SQS queue of bleets that need a query against Bluesky to fully resolve as they refer to a bleet that wasn't captured off the firehose. Bleets are queued to here by `readFirehose-rslvPosts` which also reads and processes from the queue.
 
 ## Getting Involved
 

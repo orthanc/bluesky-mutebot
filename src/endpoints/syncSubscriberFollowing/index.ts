@@ -41,16 +41,35 @@ export const rawHandler = async (
     getSubscriberFollowingRecord(event.subscriberDid),
   ]);
   const operations: Array<FollowingUpdate> = [];
+  if (!existingRecord.selfRecorded) {
+    operations.push({
+      operation: 'self',
+      following: {
+        did: event.subscriberDid,
+        handle: '<SELF>',
+      },
+    });
+  }
   Object.entries(newFollowing)
-    .filter(([did]) => !existingRecord.following[did])
+    .filter(([did]) => !existingRecord.following[did]?.linkSaved)
     .forEach(([did, rest]) =>
-      operations.push({ operation: 'add', following: { did, ...rest } })
+      operations.push({
+        operation: 'add',
+        following: {
+          did,
+          ...rest,
+          onlyLink: existingRecord.following[did] != null,
+        },
+      })
     );
 
   Object.entries(existingRecord.following)
     .filter(([did]) => !newFollowing[did])
     .forEach(([did, rest]) =>
-      operations.push({ operation: 'remove', following: { did, ...rest } })
+      operations.push({
+        operation: 'remove',
+        following: { did, ...rest, noLink: !rest.linkSaved },
+      })
     );
 
   await saveUpdates(existingRecord, operations);

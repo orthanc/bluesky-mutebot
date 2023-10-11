@@ -58,8 +58,13 @@ export async function* listPostChanges(opts: {
     console.log('max read time abort');
     controller.abort();
   }, opts.maxReadTimeMillis);
+  let maxItemTimeTimeout = setTimeout(() => {
+    console.log('initial max idle time abort');
+    controller.abort();
+  }, 1000);
   try {
     for await (const evt of subscription) {
+      clearTimeout(maxItemTimeTimeout);
       lastSeq = evt.seq;
       lastTime = evt.time;
 
@@ -75,6 +80,10 @@ export async function* listPostChanges(opts: {
       if (evt.time > startISOString) {
         break;
       }
+      maxItemTimeTimeout = setTimeout(() => {
+        console.log('max idle time abort');
+        controller.abort();
+      }, 500);
     }
   } catch (error) {
     // Ignore errors when we aborted to trigger the closing of the connection
@@ -83,6 +92,7 @@ export async function* listPostChanges(opts: {
     }
   } finally {
     clearTimeout(maxReadTimeTimeout);
+    clearTimeout(maxItemTimeTimeout);
   }
 
   if (lastSeq != null && lastTime != null) {
