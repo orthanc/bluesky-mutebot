@@ -17,6 +17,7 @@ provider:
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
     FEED_TABLE: ${self:custom.feedTable}
+    BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
 
 
@@ -64,7 +65,6 @@ functions:
     events:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
     environment:
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
@@ -97,7 +97,6 @@ functions:
           rate: rate(1 minute)
           enabled: ${self:custom.enablePolling.${self:provider.stage}}
     environment:
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
@@ -173,6 +172,18 @@ functions:
         Resource:
           - !GetAtt FeedTableV2.Arn
           - !Sub "${FeedTableV2.Arn}/*"
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt SyncSubscriberQueueTable.Arn
 
   readFirehose-rslvPosts:
     handler: ./src/endpoints/readFirehose/resolvePosts.handler
@@ -196,7 +207,6 @@ functions:
           batchSize: 1
     environment:
       EXTERNAL_RESOLVE_QUEUE_URL: !Ref ExternalResolveQueue
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
@@ -228,7 +238,6 @@ functions:
           filterPatterns:
             - eventName: [INSERT, MODIFY]
     environment:
-      BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
