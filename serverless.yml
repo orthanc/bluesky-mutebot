@@ -74,6 +74,11 @@ functions:
           - !GetAtt SubscriberFollowingTable.Arn
       - Effect: "Allow"
         Action:
+          - dynamodb:BatchGetItem
+        Resource:
+          - !GetAtt PostsTable.Arn
+      - Effect: "Allow"
+        Action:
           - dynamodb:Query
         Resource:
           - !GetAtt MuteWordsTable.Arn

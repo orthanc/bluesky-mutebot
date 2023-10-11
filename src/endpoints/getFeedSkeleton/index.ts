@@ -87,16 +87,89 @@ export const rawHandler = async (
     limit = 30;
   }
 
-  const feedContent = await listFeed(requesterDid, limit, cursor);
+  const [feedContent, following, muteWords] = await Promise.all([
+    listFeed(requesterDid, limit, cursor),
+
+    getSubscriberFollowingRecord(requesterDid),
+    getMuteWords(requesterDid),
+    cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
+  ]);
+  const postUris = new Set<string>();
+  feedContent.posts.forEach((post) => {
+    post.type === 'post'
+      ? postUris.add(post.uri)
+      : postUris.add(post.repostedPostUri);
+  });
+  const loadedPosts = await getPosts(Array.from(postUris));
+
+  const followingDids = new Set<string>();
+  Object.keys(following?.following ?? {}).forEach((did) =>
+    followingDids.add(did)
+  );
+  const filteredFeedContent = feedContent.posts.filter((postRef) => {
+    const post =
+      loadedPosts[
+        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+      ];
+    // exclude posts we can't find
+    if (post == null) return false;
+    // should never happen, but for typing, if we get back a repost skip it
+    if (post.type === 'repost') return false;
+    // Just incase there are posts in the feed by someone not being followed anymore
+    if (!followingDids.has(post.author)) return false;
+    // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+    if (
+      post.startsWithMention &&
+      !post.mentionedDids.some((mentionedDid) =>
+        followingDids.has(mentionedDid)
+      )
+    )
+      return false;
+    // exclude replies that are to a non followed
+    if (
+      post.isReply &&
+      (post.replyParentAuthorDid == null ||
+        !followingDids.has(post.replyParentAuthorDid))
+    )
+      return false;
+    // Exclude posts with muted words
+    if (
+      post.textEntries.some((postText) =>
+        postText
+          .toLowerCase()
+          .split(/\s+/)
+          .some((word) =>
+            muteWords.some((mutedWord) => word.startsWith(mutedWord))
+          )
+      )
+    )
+      return false;
+    // Exclude replies to posts with muted words
+    if (
+      post.isReply &&
+      (post.replyParentTextEntries == null ||
+        post.replyParentTextEntries.some((postText) =>
+          postText
+            .toLowerCase()
+            .split(/\s+/)
+            .some((word) =>
+              muteWords.some((mutedWord) => word.startsWith(mutedWord))
+            )
+        ))
+    )
+      return false;
+    return true;
+  });
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: feedContent.posts.map((post) =>
+      feed: filteredFeedContent.map((post) =>
         post.type === 'post'
           ? { post: post.uri }
           : {
               post: post.repostedPostUri,
               reason: {
+                $type: 'app.bsky.feed.defs#skeletonReasonRepost',
                 repost: post.uri,
               },
             }
@@ -108,56 +181,56 @@ export const rawHandler = async (
     },
   };
 
-  const [agent, following, muteWords] = await Promise.all([
-    getBskyAgent(),
-    getSubscriberFollowingRecord(requesterDid),
-    getMuteWords(requesterDid),
-    cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
-  ]);
-  console.log({ muteWords });
-  const response7 =
-    following == null
-      ? { data: { feed: [], cursor: undefined } }
-      : await agent.getTimeline({
-          limit: 100,
-          cursor,
-        });
+  // const [agent, following, muteWords] = await Promise.all([
+  //   getBskyAgent(),
+  //   getSubscriberFollowingRecord(requesterDid),
+  //   getMuteWords(requesterDid),
+  //   cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
+  // ]);
+  // console.log({ muteWords });
+  // const response7 =
+  //   following == null
+  //     ? { data: { feed: [], cursor: undefined } }
+  //     : await agent.getTimeline({
+  //         limit: 100,
+  //         cursor,
+  //       });
 
-  const followingDids = new Set<string>();
-  Object.keys(following?.following ?? {}).forEach((did) =>
-    followingDids.add(did)
-  );
+  // const followingDids = new Set<string>();
+  // Object.keys(following?.following ?? {}).forEach((did) =>
+  //   followingDids.add(did)
+  // );
 
-  return {
-    statusCode: 200,
-    body: JSON.stringify({
-      feed: response7.data.feed
-        .filter((item) => {
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-expect-error
-          const postText: string | undefined = item.post.record.text;
-          return (
-            followingDids.has(item.post.author.did) &&
-            (item.reply == null ||
-              // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-              // @ts-ignore
-              followingDids.has(item.reply?.parent?.author?.did)) &&
-            (postText == null ||
-              !postText
-                .toLowerCase()
-                .split(/\s+/)
-                .some((word) =>
-                  muteWords.some((mutedWord) => word.startsWith(mutedWord))
-                ))
-          );
-        })
-        .map((item) => ({ post: item.post.uri })),
-      cursor: response7.data.cursor,
-    }),
-    headers: {
-      'content-type': 'application/json',
-    },
-  };
+  // return {
+  //   statusCode: 200,
+  //   body: JSON.stringify({
+  //     feed: response7.data.feed
+  //       .filter((item) => {
+  //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //         // @ts-expect-error
+  //         const postText: string | undefined = item.post.record.text;
+  //         return (
+  //           followingDids.has(item.post.author.did) &&
+  //           (item.reply == null ||
+  //             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  //             // @ts-ignore
+  //             followingDids.has(item.reply?.parent?.author?.did)) &&
+  //           (postText == null ||
+  //             !postText
+  //               .toLowerCase()
+  //               .split(/\s+/)
+  //               .some((word) =>
+  //                 muteWords.some((mutedWord) => word.startsWith(mutedWord))
+  //               ))
+  //         );
+  //       })
+  //       .map((item) => ({ post: item.post.uri })),
+  //     cursor: response7.data.cursor,
+  //   }),
+  //   headers: {
+  //     'content-type': 'application/json',
+  //   },
+  // };
 };
 
 export const handler = middy(rawHandler).use(httpHeaderNormalizer());
