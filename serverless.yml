@@ -43,6 +43,7 @@ custom:
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
+  followingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
   enablePolling:
     development: false
     production: true
@@ -65,7 +66,7 @@ functions:
     events:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
     environment:
-      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
+      FOLLOWING_FEED_URL: ${self:custom.followingFeedUrl}
     iamRoleStatements:
       - Effect: "Allow"
         Action:

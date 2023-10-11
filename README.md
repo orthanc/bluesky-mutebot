@@ -48,6 +48,7 @@ This is a [Serverless](https://serverless.com/) Project designed to be deployed 
 The following SSM parameters must be setup in the AWS account where this project is deployed to provide the environment specific information:
 * `deployment-artifacts-bucket` - the S3 bucket serverless should use for deployment
 * `/bluesky-feeds/<production|development>/service/user-did` - the `did` of the bluesky account the service acts as. I.e. the mutebot account
+* `/bluesky-feeds/<production|development>/service/following-feed-url` - the at url of the following feed that this feed generator is providing
 * `/bluesky-feeds/<production|development>/domain-name` - the domain name to host the custom feed on. A Route53 zone must already be setup that the appropriate records can be added to.
 * `/bluesky-feeds/<production|development>/certificate-arn` - the ARN of the AWS ACM certificate used for HTTPs on the feed generator. This must be valid for the domain name
 * `/bluesky-feeds/<production|development>/service/identifier` - the username of the Bluesky account the service acts as e.g. `@mutebot.bsky.social`
