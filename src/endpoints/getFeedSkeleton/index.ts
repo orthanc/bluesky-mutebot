@@ -3,8 +3,7 @@ import middy from '@middy/core';
 import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
-import { DidResolver, MemoryCache } from '@atproto/did-resolver';
-import { getBskyAgent } from '../../bluesky';
+import { DidResolver } from '@atproto/identity';
 import {
   getSubscriberFollowingRecord,
   triggerSubscriberSync,
@@ -15,16 +14,12 @@ import {
   QueryCommand,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
-import { listFeed } from '../../postsStore';
+import { getPosts, listFeed } from '../../postsStore';
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
-const didCache = new MemoryCache();
-const didResolver = new DidResolver(
-  { plcUrl: 'https://plc.directory' },
-  didCache
-);
+const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
 
 const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
   const TableName = process.env.MUTE_WORDS_TABLE as string;
