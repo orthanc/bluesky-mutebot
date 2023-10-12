@@ -1,6 +1,7 @@
 export type SyncSubscriberQueueRecord = {
   subscriberDid: string;
   lastTriggered: string;
+  clear?: true;
 };
 
 export type FollowingEntry = {

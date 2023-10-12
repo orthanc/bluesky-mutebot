@@ -26,7 +26,7 @@ export type FollowingRecord = {
 };
 
 export type FollowingUpdate = {
-  operation: 'add' | 'remove' | 'self';
+  operation: 'add' | 'remove' | 'self' | 'remove-self';
   following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
 };
 
@@ -124,6 +124,8 @@ export const saveUpdates = async (
         delete updatedSubscriberFollowing.following[did];
       } else if (operation === 'self') {
         updatedSubscriberFollowing.selfRecorded = true;
+      } else if (operation === 'remove-self') {
+        delete updatedSubscriberFollowing['selfRecorded'];
       }
     }
 
@@ -243,6 +245,31 @@ export const saveUpdates = async (
                   UpdateExpression: 'SET following = :one',
                   ExpressionAttributeValues: {
                     ':one': 1,
+                  },
+                },
+              }
+            );
+          } else if (operation.operation === 'remove-self') {
+            updates.push(
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'ADD followedBy :negOne',
+                  ExpressionAttributeValues: {
+                    ':negOne': -1,
+                  },
+                },
+              },
+              {
+                Delete: {
+                  TableName,
+                  Key: {
+                    subscriberDid: subscriberFollowing.subscriberDid,
+                    qualifier: subscriberFollowing.subscriberDid,
                   },
                 },
               }
