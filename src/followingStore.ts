@@ -11,11 +11,17 @@ import {
   PutCommandInput,
   QueryCommand,
   QueryCommandOutput,
+  ScanCommand,
+  ScanCommandOutput,
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
-import { FollowingEntry, FollowingSet } from './types';
+import {
+  FollowingEntry,
+  FollowingSet,
+  SyncSubscriberQueueRecord,
+} from './types';
 
 export type FollowingRecord = {
   subscriberDid: string;
@@ -26,7 +32,7 @@ export type FollowingRecord = {
 };
 
 export type FollowingUpdate = {
-  operation: 'add' | 'remove' | 'self';
+  operation: 'add' | 'remove' | 'self' | 'remove-self';
   following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
 };
 
@@ -41,6 +47,30 @@ export type AggregateListRecord = {
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
+
+export async function* listSubscriberSyncBefore(
+  beforeDate: string
+): AsyncGenerator<SyncSubscriberQueueRecord> {
+  const TableName = process.env.SYNC_SUBSCRIBER_QUEUE_TABLE as string;
+  let cursor: Record<string, unknown> | undefined = undefined;
+  do {
+    const response: ScanCommandOutput = await ddbDocClient.send(
+      new ScanCommand({
+        TableName,
+        ExclusiveStartKey: cursor,
+        FilterExpression:
+          'lastTriggered < :beforeDate AND attribute_not_exists(clear)',
+        ExpressionAttributeValues: {
+          ':beforeDate': beforeDate,
+        },
+      })
+    );
+    cursor = response.LastEvaluatedKey;
+    for (const item of response.Items ?? []) {
+      yield item as SyncSubscriberQueueRecord;
+    }
+  } while (cursor != null);
+}
 
 export const triggerSubscriberSync = async (subscriberDid: string) => {
   try {
@@ -65,7 +95,37 @@ export const triggerSubscriberSync = async (subscriberDid: string) => {
     if (!(error instanceof ConditionalCheckFailedException)) {
       throw error;
     }
-    console.log('ignoring trugger for ' + subscriberDid + ' not been 30 min');
+    console.log('ignoring trigger for ' + subscriberDid + ' not been 30 min');
+  }
+};
+
+export const triggerClearSubscriber = async ({
+  subscriberDid,
+  lastTriggered,
+}: Pick<SyncSubscriberQueueRecord, 'subscriberDid' | 'lastTriggered'>) => {
+  try {
+    await ddbDocClient.send(
+      new UpdateCommand({
+        TableName: process.env.SYNC_SUBSCRIBER_QUEUE_TABLE as string,
+        Key: {
+          subscriberDid,
+        },
+        UpdateExpression: 'SET clear = :true, expiresAt = :expiresAt',
+        ConditionExpression: 'lastTriggered = :lastTriggered',
+        ExpressionAttributeValues: {
+          ':true': true,
+          ':lastTriggered': lastTriggered,
+          ':expiresAt': Math.floor(Date.now() / 1000) + 24 * 3600,
+        },
+      })
+    );
+  } catch (error) {
+    if (!(error instanceof ConditionalCheckFailedException)) {
+      throw error;
+    }
+    console.log(
+      'ignoring clear for ' + subscriberDid + ' as last triggered has changed'
+    );
   }
 };
 
@@ -124,6 +184,8 @@ export const saveUpdates = async (
         delete updatedSubscriberFollowing.following[did];
       } else if (operation === 'self') {
         updatedSubscriberFollowing.selfRecorded = true;
+      } else if (operation === 'remove-self') {
+        delete updatedSubscriberFollowing['selfRecorded'];
       }
     }
 
@@ -243,6 +305,31 @@ export const saveUpdates = async (
                   UpdateExpression: 'SET following = :one',
                   ExpressionAttributeValues: {
                     ':one': 1,
+                  },
+                },
+              }
+            );
+          } else if (operation.operation === 'remove-self') {
+            updates.push(
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'ADD followedBy :negOne',
+                  ExpressionAttributeValues: {
+                    ':negOne': -1,
+                  },
+                },
+              },
+              {
+                Delete: {
+                  TableName,
+                  Key: {
+                    subscriberDid: subscriberFollowing.subscriberDid,
+                    qualifier: subscriberFollowing.subscriberDid,
                   },
                 },
               }

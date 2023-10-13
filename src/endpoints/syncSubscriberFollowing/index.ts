@@ -37,11 +37,23 @@ export const rawHandler = async (
 ): Promise<void> => {
   const agent = await getBskyAgent();
   const [newFollowing, existingRecord] = await Promise.all([
-    getAllFollowing(agent, event.subscriberDid),
+    event.clear
+      ? Promise.resolve<FollowingSet>({})
+      : getAllFollowing(agent, event.subscriberDid),
     getSubscriberFollowingRecord(event.subscriberDid),
   ]);
   const operations: Array<FollowingUpdate> = [];
-  if (!existingRecord.selfRecorded) {
+  if (event.clear) {
+    if (existingRecord.selfRecorded) {
+      operations.push({
+        operation: 'remove-self',
+        following: {
+          did: event.subscriberDid,
+          handle: '<SELF>',
+        },
+      });
+    }
+  } else if (!existingRecord.selfRecorded) {
     operations.push({
       operation: 'self',
       following: {

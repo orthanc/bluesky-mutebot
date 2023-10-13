@@ -76,6 +76,16 @@ export const rawHandler = async (
     limit = 30;
   }
 
+  if (feed !== process.env.FOLLOWING_FEED_URL) {
+    return {
+      statusCode: 404,
+      body: 'Unknown feed',
+      headers: {
+        'content-type': 'text/plain',
+      },
+    };
+  }
+
   const [feedContent, following, muteWords] = await Promise.all([
     listFeed(requesterDid, limit, cursor),
 
