@@ -63,14 +63,13 @@ export const rawHandler = async (
     });
   }
   Object.entries(newFollowing)
-    .filter(([did]) => !existingRecord.following[did]?.linkSaved)
+    .filter(([did]) => !existingRecord.following[did])
     .forEach(([did, rest]) =>
       operations.push({
         operation: 'add',
         following: {
           did,
           ...rest,
-          onlyLink: existingRecord.following[did] != null,
         },
       })
     );
@@ -80,7 +79,7 @@ export const rawHandler = async (
     .forEach(([did, rest]) =>
       operations.push({
         operation: 'remove',
-        following: { did, ...rest, noLink: !rest.linkSaved },
+        following: { did, ...rest },
       })
     );
 

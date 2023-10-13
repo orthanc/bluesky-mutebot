@@ -141,30 +141,19 @@ export const savePostsBatch = async (
 
       promises.push(
         queue.add(async () => {
-          try {
-            console.log(`Saving Batch ${JSON.stringify(batch)}`);
-            return await ddbDocClient.send(
-              new BatchWriteCommand({
-                RequestItems: {
-                  [TableName]: batch,
-                },
-              })
-            );
-          } catch (e) {
-            console.log(JSON.stringify(batch));
-            throw e;
-          }
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
         })
       );
     }
     for (const result of await Promise.all(promises)) {
       const unprocessedItems = result.UnprocessedItems?.[TableName];
       if (unprocessedItems != null) {
-        console.log(
-          `Retrying with unprocessed Items: ${
-            operations.length
-          } ${JSON.stringify(unprocessedItems)}`
-        );
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         operations.push(...unprocessedItems);
@@ -208,18 +197,13 @@ export const addToFeeds = async (
 
       promises.push(
         queue.add(async () => {
-          try {
-            return await ddbDocClient.send(
-              new BatchWriteCommand({
-                RequestItems: {
-                  [TableName]: batch,
-                },
-              })
-            );
-          } catch (e) {
-            console.log(JSON.stringify(batch));
-            throw e;
-          }
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
         })
       );
     }
@@ -276,18 +260,13 @@ export const removeFromFeeds = async (postUri: string) => {
 
       promises.push(
         queue.add(async () => {
-          try {
-            return await ddbDocClient.send(
-              new BatchWriteCommand({
-                RequestItems: {
-                  [TableName]: batch,
-                },
-              })
-            );
-          } catch (e) {
-            console.log(JSON.stringify(batch));
-            throw e;
-          }
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
         })
       );
     }
@@ -347,18 +326,13 @@ export const removeAuthorFromFeed = async (
 
       promises.push(
         queue.add(async () => {
-          try {
-            return await ddbDocClient.send(
-              new BatchWriteCommand({
-                RequestItems: {
-                  [TableName]: batch,
-                },
-              })
-            );
-          } catch (e) {
-            console.log(JSON.stringify(batch));
-            throw e;
-          }
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
         })
       );
     }
@@ -410,18 +384,13 @@ export const addAuthorToFeed = async (
 
       promises.push(
         queue.add(async () => {
-          try {
-            return await ddbDocClient.send(
-              new BatchWriteCommand({
-                RequestItems: {
-                  [TableName]: batch,
-                },
-              })
-            );
-          } catch (e) {
-            console.log(JSON.stringify(batch));
-            throw e;
-          }
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
         })
       );
     }
@@ -457,7 +426,6 @@ export const listFeed = async (
       Limit: limit,
     })
   );
-  console.log(records.LastEvaluatedKey);
 
   return {
     cursor:
