@@ -33,7 +33,7 @@ export type FollowingRecord = {
 
 export type FollowingUpdate = {
   operation: 'add' | 'remove' | 'self' | 'remove-self';
-  following: FollowingEntry & { onlyLink?: boolean; noLink?: boolean };
+  following: FollowingEntry;
 };
 
 export type AggregateListRecord = {
@@ -172,8 +172,7 @@ export const saveUpdates = async (
     };
     for (const {
       operation,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      following: { did, onlyLink, noLink, ...entry },
+      following: { did, ...entry },
     } of batch) {
       if (operation === 'add') {
         updatedSubscriberFollowing.following[did] = {
@@ -225,8 +224,8 @@ export const saveUpdates = async (
         ...batch.flatMap((operation) => {
           const updates: TransactWriteCommandInput['TransactItems'] = [];
           if (operation.operation === 'add') {
-            if (!operation.following.onlyLink) {
-              updates.push({
+            updates.push(
+              {
                 Update: {
                   TableName,
                   Key: {
@@ -240,37 +239,37 @@ export const saveUpdates = async (
                     ':handle': operation.following.handle,
                   },
                 },
-              });
-            }
-            updates.push({
-              Update: {
-                TableName,
-                Key: {
-                  subscriberDid: operation.following.did,
-                  qualifier: subscriberFollowing.subscriberDid,
-                },
-                UpdateExpression: 'SET following = :one',
-                ExpressionAttributeValues: {
-                  ':one': 1,
-                },
               },
-            });
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: operation.following.did,
+                    qualifier: subscriberFollowing.subscriberDid,
+                  },
+                  UpdateExpression: 'SET following = :one',
+                  ExpressionAttributeValues: {
+                    ':one': 1,
+                  },
+                },
+              }
+            );
           } else if (operation.operation === 'remove') {
-            updates.push({
-              Update: {
-                TableName,
-                Key: {
-                  subscriberDid: 'aggregate',
-                  qualifier: operation.following.did,
-                },
-                UpdateExpression: 'ADD followedBy :negOne',
-                ExpressionAttributeValues: {
-                  ':negOne': -1,
+            updates.push(
+              {
+                Update: {
+                  TableName,
+                  Key: {
+                    subscriberDid: 'aggregate',
+                    qualifier: operation.following.did,
+                  },
+                  UpdateExpression: 'ADD followedBy :negOne',
+                  ExpressionAttributeValues: {
+                    ':negOne': -1,
+                  },
                 },
               },
-            });
-            if (!operation.following.noLink) {
-              updates.push({
+              {
                 Delete: {
                   TableName,
                   Key: {
@@ -278,8 +277,8 @@ export const saveUpdates = async (
                     qualifier: subscriberFollowing.subscriberDid,
                   },
                 },
-              });
-            }
+              }
+            );
           } else if (operation.operation === 'self') {
             updates.push(
               {
