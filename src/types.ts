@@ -2,6 +2,7 @@ export type SyncSubscriberQueueRecord = {
   subscriberDid: string;
   lastTriggered: string;
   clear?: true;
+  expiresAt?: number;
 };
 
 export type FollowingEntry = {

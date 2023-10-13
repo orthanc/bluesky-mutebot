@@ -279,6 +279,22 @@ functions:
           - !GetAtt PostsTable.Arn
           - !Sub "${PostsTable.Arn}/*"
 
+  syncSubscriberFollowing-cleanUp:
+    handler: ./src/endpoints/syncSubscriberFollowing/cleanUpOldSubscribers.handler
+    timeout: 900
+    events:
+      - schedule:
+          rate: rate(7 days)
+          enabled: ${self:custom.enablePolling.${self:provider.stage}}
+    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-cleanUp-${self:provider.region}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - dynamodb:UpdateItem
+          - dynamodb:Scan
+        Resource:
+          - !GetAtt SyncSubscriberQueueTable.Arn
+
 resources:
   Resources:
     SyncSubscriberQueueTable:
@@ -294,6 +310,9 @@ resources:
             KeyType: HASH
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True
 
     SubscriberFollowingTable:
       Type: AWS::DynamoDB::Table
