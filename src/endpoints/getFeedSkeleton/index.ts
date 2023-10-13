@@ -50,8 +50,6 @@ const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
 export const rawHandler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
-  console.log(JSON.stringify(event, undefined, 2));
-
   const { authorization = '' } = event.headers;
   if (!authorization.startsWith('Bearer ')) {
     throw new httpErrors.Unauthorized();
@@ -65,7 +63,6 @@ export const rawHandler = async (
     }
   );
 
-  console.log({ requesterDid });
   const {
     cursor,
     feed,
@@ -75,8 +72,10 @@ export const rawHandler = async (
   if (limit == null || limit <= 0) {
     limit = 30;
   }
+  console.log({ requesterDid, cursor, feed, limit });
 
   if (feed !== process.env.FOLLOWING_FEED_URL) {
+    console.log(`Unknown Feed ${feed}`);
     return {
       statusCode: 404,
       body: 'Unknown feed',
@@ -97,6 +96,7 @@ export const rawHandler = async (
   ]);
 
   if (Object.keys(following?.following ?? {}).length === 0) {
+    console.log(`Returning First View Post`);
     return {
       statusCode: 200,
       body: JSON.stringify({
@@ -200,57 +200,6 @@ export const rawHandler = async (
       'content-type': 'application/json',
     },
   };
-
-  // const [agent, following, muteWords] = await Promise.all([
-  //   getBskyAgent(),
-  //   getSubscriberFollowingRecord(requesterDid),
-  //   getMuteWords(requesterDid),
-  //   cursor == null ? triggerSubscriberSync(requesterDid) : Promise.resolve(),
-  // ]);
-  // console.log({ muteWords });
-  // const response7 =
-  //   following == null
-  //     ? { data: { feed: [], cursor: undefined } }
-  //     : await agent.getTimeline({
-  //         limit: 100,
-  //         cursor,
-  //       });
-
-  // const followingDids = new Set<string>();
-  // Object.keys(following?.following ?? {}).forEach((did) =>
-  //   followingDids.add(did)
-  // );
-
-  // return {
-  //   statusCode: 200,
-  //   body: JSON.stringify({
-  //     feed: response7.data.feed
-  //       .filter((item) => {
-  //         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  //         // @ts-expect-error
-  //         const postText: string | undefined = item.post.record.text;
-  //         return (
-  //           followingDids.has(item.post.author.did) &&
-  //           (item.reply == null ||
-  //             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-  //             // @ts-ignore
-  //             followingDids.has(item.reply?.parent?.author?.did)) &&
-  //           (postText == null ||
-  //             !postText
-  //               .toLowerCase()
-  //               .split(/\s+/)
-  //               .some((word) =>
-  //                 muteWords.some((mutedWord) => word.startsWith(mutedWord))
-  //               ))
-  //         );
-  //       })
-  //       .map((item) => ({ post: item.post.uri })),
-  //     cursor: response7.data.cursor,
-  //   }),
-  //   headers: {
-  //     'content-type': 'application/json',
-  //   },
-  // };
 };
 
 export const handler = middy(rawHandler).use(httpHeaderNormalizer());
