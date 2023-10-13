@@ -22,6 +22,7 @@ provider:
 
 
 custom:
+  logRetentionInDays: 90
   prune:
     automatic: true
     number: 3
@@ -54,6 +55,7 @@ plugins:
   - serverless-domain-manager
   - serverless-iam-roles-per-function
   - serverless-prune-plugin
+  - serverless-plugin-log-retention
 
 functions:
   did:

@@ -39,6 +39,7 @@
     "@middy/core": "^4.6.4",
     "@middy/http-header-normalizer": "^4.6.4",
     "http-errors": "^2.0.0",
-    "p-queue": "^6.6.2"
+    "p-queue": "^6.6.2",
+    "serverless-plugin-log-retention": "^2.0.0"
   }
 }
