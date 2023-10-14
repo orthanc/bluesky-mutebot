@@ -253,6 +253,8 @@ functions:
                     S: [aggregate]
                   followedBy:
                     N: ["0"]
+                  expiresAt:
+                    N: [ { "exists": false } ]
             - eventName: [INSERT, REMOVE]
               dynamodb:
                 Keys:
