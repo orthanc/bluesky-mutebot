@@ -5,7 +5,7 @@ import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import { SessionRecord, createAuthKey } from './sessionStore';
+import { SessionRecord, authorizeSession, createAuthKey } from './sessionStore';
 import { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import { OperationsSubscription } from '../readFirehose/firehoseSubscription/subscribe';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
@@ -62,6 +62,11 @@ export const rawHandler = async (
 
   const profile = await agent.getProfile({ actor: approvalPost.author });
 
+  await authorizeSession({
+    sessionId: event.sessionId,
+    subscriberDid: profile.data.did,
+    subscriberHandle: profile.data.handle,
+  });
   await client.send(
     new PostToConnectionCommand({
       Data: `

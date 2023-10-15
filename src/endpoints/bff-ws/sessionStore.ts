@@ -1,5 +1,9 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb'; // ES6 import
+import {
+  DynamoDBDocumentClient,
+  PutCommand,
+  UpdateCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { GenerateRandomCommand, KMSClient } from '@aws-sdk/client-kms';
 import base64url from 'base64url';
 
@@ -63,4 +67,31 @@ export const createSession = async (
     })
   );
   return session;
+};
+
+export const authorizeSession = async (
+  opts: Pick<
+    AuthorizedSessionRecord,
+    'sessionId' | 'subscriberDid' | 'subscriberHandle'
+  >
+) => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName,
+      Key: {
+        sessionId: opts.sessionId,
+      },
+      UpdateExpression:
+        'SET #status = :status, subscriberDid = :subscriberDid, subscriberHandle = :subscriberHandle',
+      ExpressionAttributeNames: {
+        '#status': 'status',
+      },
+      ExpressionAttributeValues: {
+        ':status': 'authorized',
+        ':subscriberDid': opts.subscriberDid,
+        ':subscriberHandle': opts.subscriberHandle,
+      },
+    })
+  );
 };

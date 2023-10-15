@@ -112,6 +112,11 @@ functions:
         Action:
           - kms:GenerateRandom
         Resource: '*'
+      - Effect: "Allow"
+        Action:
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt ConsoleSessionsTable.Arn
 
 
   did:
