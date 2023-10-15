@@ -84,6 +84,12 @@ functions:
           - !GetAtt ConsoleSessionsTable.Arn
       - Effect: "Allow"
         Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
+          - !Sub "${ConsoleSessionsTable.Arn}/*"
+      - Effect: "Allow"
+        Action:
           - kms:GenerateRandom
         Resource: '*'
 

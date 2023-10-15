@@ -2,6 +2,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
   PutCommand,
+  QueryCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { GenerateRandomCommand, KMSClient } from '@aws-sdk/client-kms';
@@ -94,4 +95,23 @@ export const authorizeSession = async (
       },
     })
   );
+};
+
+export const getSessionByConnectionId = async (
+  connectionId: string
+): Promise<AuthorizedSessionRecord | undefined> => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      IndexName: 'ByConnectionId',
+      KeyConditionExpression: 'connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId,
+      },
+      Limit: 1,
+    })
+  );
+  if (result.Items == null || result.Items.length === 0) return undefined;
+  return result.Items[0] as AuthorizedSessionRecord;
 };
