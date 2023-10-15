@@ -1,0 +1,83 @@
+service: bluesky-feeds-web
+
+provider:
+  name: aws
+  region: us-west-2
+  runtime: nodejs18.x
+  stage: ${opt:stage, 'development'}
+  timeout: 28
+  memorySize: 1024
+  deploymentBucket:
+    name: ${ssm:deployment-artifacts-bucket}
+
+package:
+  excludeDevDependencies: false
+  patterns:
+    - "!**"
+
+plugins:
+  - serverless-prune-plugin
+
+custom:
+  certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/web-certificate-arn}
+  domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
+  hostedZoneName: ${ssm:/bluesky-feeds/${self:provider.stage}/console/hosted-zone-name}
+
+resources:
+  Resources:
+    CloudFrontDistribution:
+      Type: AWS::CloudFront::Distribution
+      Properties:
+        DistributionConfig:
+          Aliases:
+            - "${self:custom.domainName}"
+          Enabled: True
+          PriceClass: PriceClass_All
+          ViewerCertificate:
+            AcmCertificateArn: "${self:custom.certificateArn}"
+            MinimumProtocolVersion: TLSv1.2_2021
+            SslSupportMethod: sni-only
+          Origins:
+            - Id: ContentBucket
+              DomainName: ${ssm:content-bucket-regional-domain-name}
+              OriginPath: /${self:service}/${self:provider.stage}
+              S3OriginConfig:
+                OriginAccessIdentity: ${ssm:content-bucket-access-identity}
+          DefaultCacheBehavior:
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Optimized
+            Compress: True
+            TargetOriginId: ContentBucket
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt Redirects.FunctionARN
+
+    Redirects:
+      Type: AWS::CloudFront::Function
+      Properties:
+        Name: ${self:service}-${sls:stage}-redirects
+        AutoPublish: True
+        FunctionCode: ${file('./resolveRedirects.js')}
+        FunctionConfig:
+          Comment: "redirects"
+          Runtime: cloudfront-js-1.0
+
+    IpV4DnsAlias:
+      Type: AWS::Route53::RecordSet
+      Properties:
+        Name: "${self:custom.domainName}"
+        AliasTarget:
+          DNSName: !GetAtt CloudFrontDistribution.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+        HostedZoneName: "${self:custom.hostedZoneName}."
+        Type: A
+
+    IpV6DnsAlias:
+      Type: AWS::Route53::RecordSet
+      Properties:
+        Name: "${self:custom.domainName}"
+        AliasTarget:
+          DNSName: !GetAtt CloudFrontDistribution.DomainName
+          HostedZoneId: Z2FDTNDATAQYW2
+        HostedZoneName: "${self:custom.hostedZoneName}."
+        Type: AAAA

@@ -1,0 +1,15 @@
+<html>
+  <head>
+    <script src="/htmx-1.6.9.min.js"></script>
+    <script src="/htmx-ext-ws-1.6.9.js"></script>
+  </head>
+  <body>
+  <div hx-ext="ws" ws-connect="wss://<%= process.env.WEBSOCKET_DOMAIN %>">
+    <div id="content">
+      <form id="form" ws-send>
+          <input type="submit" name="authorize" value="Login"/>
+      </form>
+    </div>
+</div>
+  </body>
+</html>
