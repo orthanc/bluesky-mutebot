@@ -101,7 +101,7 @@ functions:
 
   bff-approval-listener:
     handler: ./src/endpoints/bff-ws/approvalListener.handler
-    timeout: 900
+    timeout: 300
     events:
       - stream:
           type: dynamodb
