@@ -129,6 +129,11 @@ functions:
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt ConsoleSessionsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
 
 
   did:

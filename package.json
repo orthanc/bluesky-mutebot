@@ -47,6 +47,7 @@
     "base64url": "^3.0.1",
     "http-errors": "^2.0.0",
     "p-queue": "^6.6.2",
+    "preact-render-to-string": "^6.2.2",
     "serverless-plugin-log-retention": "^2.0.0"
   }
 }

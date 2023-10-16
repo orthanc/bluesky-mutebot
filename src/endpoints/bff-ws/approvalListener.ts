@@ -10,6 +10,9 @@ import { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import { OperationsSubscription } from '../readFirehose/firehoseSubscription/subscribe';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 import { getBskyAgent } from '../../bluesky';
+import { renderBleetToAuthorise } from './components/BleetToAuthorise';
+import { getMuteWords } from '../../muteWordsStore';
+import { renderMuteWordsContent } from './components/MuteWordsContent';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
@@ -20,11 +23,7 @@ const getApprovalPost = async (connectionId: string, timeoutMillis: number) => {
 
   await client.send(
     new PostToConnectionCommand({
-      Data: `
-<div id="content" hx-swap-oob="true">
-    Bleet the following to login to Mutebot
-    <pre>@${process.env.BLUESKY_SERVICE_IDENTIFIER} let me in ${authKey}</pre>
-</div>`,
+      Data: renderBleetToAuthorise(authKey),
       ConnectionId: connectionId,
     })
   );
@@ -57,27 +56,23 @@ export const rawHandler = async (
 
   const [approvalPost, agent] = await Promise.all([
     getApprovalPost(connectionId, context.getRemainingTimeInMillis() - 5000),
+    // { author: 'did:plc:crngjmsdh3zpuhmd5gtgwx6q' },
     getBskyAgent(),
   ]);
 
   const profile = await agent.getProfile({ actor: approvalPost.author });
 
-  await authorizeSession({
-    sessionId: event.sessionId,
-    subscriberDid: profile.data.did,
-    subscriberHandle: profile.data.handle,
-  });
+  const [muteWords] = await Promise.all([
+    getMuteWords(profile.data.did),
+    authorizeSession({
+      sessionId: event.sessionId,
+      subscriberDid: profile.data.did,
+      subscriberHandle: profile.data.handle,
+    }),
+  ]);
   await client.send(
     new PostToConnectionCommand({
-      Data: `
-<div id="content" hx-swap-oob="true">
-      <h1>Welcome ${profile.data.handle}</h1>
-      <div id="mute-words">
-      </div>
-      <form id="form" ws-send>
-            <input type="submit" name="loadMuteWords" value="Get Mute Words"/>
-        </form>
-</div>`,
+      Data: renderMuteWordsContent(profile.data.handle, muteWords),
       ConnectionId: connectionId,
     })
   );

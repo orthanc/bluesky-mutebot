@@ -14,6 +14,8 @@ import {
   deleteMuteWord,
   getMuteWords,
 } from '../../muteWordsStore';
+import { renderMuteWords } from './components/MuteWords.';
+import { renderEstablishingSession } from './components/EstablishingSession';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
@@ -28,21 +30,7 @@ const sendMuteWords = async (
   await client.send(
     new PostToConnectionCommand({
       // PostToConnectionRequest
-      Data: `
-<div id="mute-words" hx-swap-oob="true">
-    <ul>
-    ${muteWords
-      .map(
-        (word) =>
-          `<li><button name="unmuteWord" value="${word}" ws-send>Delete</button> ${word}</li>`
-      )
-      .join('\n')}
-    </ul>
-    <form ws-send>
-      <input type="text" name="muteWord" placeholder="word to mute"/>
-      <input type="submit" value="Mute"/>
-    </form>
-</div>`,
+      Data: renderMuteWords(muteWords),
       ConnectionId: connectionId,
     })
   );
@@ -63,10 +51,7 @@ export const handler = async (
     await client.send(
       new PostToConnectionCommand({
         // PostToConnectionRequest
-        Data: `
-<div id="content" hx-swap-oob="true">
-    Establishing Session.....
-</div>`,
+        Data: renderEstablishingSession(),
         ConnectionId: connectionId,
       })
     );
