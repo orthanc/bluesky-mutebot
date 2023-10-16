@@ -10,13 +10,15 @@ provider:
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
   environment:
-    PUBLIC_HOSTNAME: ${self:custom.customDomain.domainName}
+    PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
     FEED_TABLE: ${self:custom.feedTable}
+    CONSOLE_SESSIONS_TABLE: ${self:custom.consoleSessionsTable}
+    WEBSOCKET_ENDPOINT: https://${self:custom.customDomain.websocket.domainName}
     BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
 
@@ -29,17 +31,24 @@ custom:
   serverless-iam-roles-per-function:
     defaultInherit: true
   customDomain:
-    domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
-    certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
-    endpointType: REGIONAL
-    securityPolicy: tls_1_2
-    apiType: http
+    http:
+      domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
+      certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
+      endpointType: REGIONAL
+      securityPolicy: tls_1_2
+      apiType: http
+    websocket:
+      domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/console/ws-domain-name}
+      certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
+      securityPolicy: tls_1_2
+      endpointType: regional
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
   feedTable: ${self:service}-${self:provider.stage}-feed-v2
+  consoleSessionsTable: ${self:service}-${self:provider.stage}-console-sessions
   externalResolveQueue: ${self:service}-${self:provider.stage}-external-resolve.fifo
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
@@ -58,6 +67,75 @@ plugins:
   - serverless-plugin-log-retention
 
 functions:
+  bff-ws:
+    handler: ./src/endpoints/bff-ws/index.handler
+    events:
+      - websocket: $default
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource:
+          - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
+      - Effect: "Allow"
+        Action:
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt ConsoleSessionsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !Sub "${ConsoleSessionsTable.Arn}/*"
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - kms:GenerateRandom
+        Resource: '*'
+
+  bff-approval-listener:
+    handler: ./src/endpoints/bff-ws/approvalListener.handler
+    timeout: 900
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            Fn::GetAtt: [ConsoleSessionsTable, StreamArn]
+          startingPosition: LATEST
+          batchSize: 1
+          maximumRetryAttempts: 1
+          filterPatterns:
+            - eventName: [INSERT]
+    environment:
+      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - execute-api:ManageConnections
+        Resource:
+          - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
+      - Effect: "Allow"
+        Action:
+          - kms:GenerateRandom
+        Resource: '*'
+      - Effect: "Allow"
+        Action:
+          - dynamodb:UpdateItem
+        Resource:
+          - !GetAtt ConsoleSessionsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
+
+
   did:
     handler: ./src/endpoints/did/index.handler
     events:
@@ -468,3 +546,29 @@ resources:
       Properties:
         QueueName: ${self:custom.externalResolveQueue}
         FifoQueue: True
+
+    ConsoleSessionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.consoleSessionsTable}
+        AttributeDefinitions:
+          - AttributeName: sessionId
+            AttributeType: S
+          - AttributeName: connectionId
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: sessionId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: ByConnectionId
+            KeySchema:
+              - AttributeName: connectionId
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True

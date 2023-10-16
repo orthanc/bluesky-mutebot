@@ -4,12 +4,7 @@ import { PostTableRecord, addToFeeds, removeFromFeeds } from '../../postsStore';
 import { listFollowedBy } from '../../followingStore';
 import { DynamoDBStreamEvent } from 'aws-lambda';
 import { AttributeValue } from '@aws-sdk/client-dynamodb';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  TransactWriteCommand,
-  TransactWriteCommandInput,
-} from '@aws-sdk/lib-dynamodb';
+import { MuteWordsOperation, updateMuteWords } from '../../muteWordsStore';
 
 type Event =
   | {
@@ -17,9 +12,6 @@ type Event =
       record: PostTableRecord;
     }
   | { eventName: 'REMOVE'; key: Pick<PostTableRecord, 'uri'> };
-
-const client = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(client);
 
 const handleCommands = async (post: PostTableRecord) => {
   if (post.type !== 'post') return;
@@ -42,11 +34,7 @@ const handleCommands = async (post: PostTableRecord) => {
   if (match == null) {
     return;
   }
-  const operations: Array<{
-    operation: 'mute' | 'unmute';
-    subscriberDid: string;
-    word: string;
-  }> = [];
+  const operations: Array<MuteWordsOperation> = [];
   const operation = match[1];
   match[2]
     .split(/\s+/)
@@ -71,37 +59,7 @@ const handleCommands = async (post: PostTableRecord) => {
     .reverse();
 
   console.log(JSON.stringify({ operations, finalOperations }, undefined, 2));
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
-  let remainingOperations = finalOperations;
-  while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 100);
-    remainingOperations = remainingOperations.slice(100);
-    const writeCommand: TransactWriteCommandInput = {
-      TransactItems: batch.map((operation) =>
-        operation.operation === 'mute'
-          ? {
-              Put: {
-                TableName,
-                Item: {
-                  subscriberDid: operation.subscriberDid,
-                  muteWord: operation.word,
-                },
-              },
-            }
-          : {
-              Delete: {
-                TableName,
-                Key: {
-                  subscriberDid: operation.subscriberDid,
-                  muteWord: operation.word,
-                },
-              },
-            }
-      ),
-    };
-    console.log(JSON.stringify(writeCommand, undefined, 2));
-    await ddbDocClient.send(new TransactWriteCommand(writeCommand));
-  }
+  await updateMuteWords(finalOperations);
 };
 
 export const rawHandler = async (event: Event): Promise<void> => {
