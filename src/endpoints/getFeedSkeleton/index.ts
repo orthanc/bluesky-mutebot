@@ -119,28 +119,20 @@ export const rawHandler = async (
       return false;
     // Exclude posts with muted words
     if (
-      post.textEntries.some((postText) =>
-        postText
-          .toLowerCase()
-          .split(/\s+/)
-          .some((word) =>
-            muteWords.some((mutedWord) => word.startsWith(mutedWord))
-          )
-      )
+      post.textEntries.some((postText) => {
+        const lowerText = postText.toLowerCase();
+        return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+      })
     )
       return false;
     // Exclude replies to posts with muted words
     if (
       post.isReply &&
       (post.replyParentTextEntries == null ||
-        post.replyParentTextEntries.some((postText) =>
-          postText
-            .toLowerCase()
-            .split(/\s+/)
-            .some((word) =>
-              muteWords.some((mutedWord) => word.startsWith(mutedWord))
-            )
-        ))
+        post.replyParentTextEntries.some((postText) => {
+          const lowerText = postText.toLowerCase();
+          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+        }))
     )
       return false;
     return true;

@@ -44,8 +44,6 @@ export const handler = async (
     throw new Error('Bad Request, no connection id');
   }
   const body = JSON.parse(event.body as string);
-  console.log(JSON.stringify(event, undefined, 2));
-  console.log(JSON.stringify(body, undefined, 2));
   if (body.authorize) {
     await createSession(connectionId);
     await client.send(
