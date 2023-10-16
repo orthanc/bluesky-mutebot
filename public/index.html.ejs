@@ -11,10 +11,13 @@
         </form>
       </div>
       <div>
-        <form id="ping-form" ws-send hx-trigger="every 60s">
+        <form id="ping-form" ws-send hx-trigger="ws-keep-alive">
           <input type="hidden" name="ping" value="true"/>
         </form>
       </div>
     </div>
+    <script>
+      setInterval(() => document.getElementById('ping-form').dispatchEvent(new Event('ws-keep-alive')), 120000)
+    </script>
   </body>
 </html>

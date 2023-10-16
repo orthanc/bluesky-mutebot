@@ -4,39 +4,48 @@ import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi'; // ES Modules import
-import { createSession, getSessionByConnectionId } from './sessionStore';
 import {
-  DynamoDBDocumentClient,
-  QueryCommand,
-  QueryCommandOutput,
-} from '@aws-sdk/lib-dynamodb';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+  AuthorizedSessionRecord,
+  createSession,
+  getSessionByConnectionId,
+} from './sessionStore';
+import {
+  addMuteWord,
+  deleteMuteWord,
+  getMuteWords,
+} from '../../muteWordsStore';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
 });
 
-const ddbDocClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const sendMuteWords = async (
+  connectionId: string,
+  session: AuthorizedSessionRecord
+) => {
+  const muteWords = await getMuteWords(session.subscriberDid);
 
-const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
-  let ExclusiveStartKey: Record<string, string> | undefined = undefined;
-  const muteWords: Array<string> = [];
-  do {
-    const result: QueryCommandOutput = await ddbDocClient.send(
-      new QueryCommand({
-        TableName,
-        KeyConditionExpression: 'subscriberDid = :subscriberDid',
-        ExpressionAttributeValues: {
-          ':subscriberDid': subscriberDid,
-        },
-        ExclusiveStartKey,
-      })
-    );
-    (ExclusiveStartKey = result.LastEvaluatedKey),
-      result.Items?.map(({ muteWord }) => muteWords.push(muteWord));
-  } while (ExclusiveStartKey != null);
-  return muteWords;
+  await client.send(
+    new PostToConnectionCommand({
+      // PostToConnectionRequest
+      Data: `
+<div id="mute-words" hx-swap-oob="true">
+    <ul>
+    ${muteWords
+      .map(
+        (word) =>
+          `<li><button name="unmuteWord" value="${word}" ws-send>Delete</button> ${word}</li>`
+      )
+      .join('\n')}
+    </ul>
+    <form ws-send>
+      <input type="text" name="muteWord" placeholder="word to mute"/>
+      <input type="submit" value="Mute"/>
+    </form>
+</div>`,
+      ConnectionId: connectionId,
+    })
+  );
 };
 
 export const handler = async (
@@ -61,23 +70,18 @@ export const handler = async (
         ConnectionId: connectionId,
       })
     );
-  } else if (body.loadMuteWords) {
+  } else {
     const session = await getSessionByConnectionId(connectionId);
     if (session != null) {
-      const muteWords = await getMuteWords(session.subscriberDid);
-
-      await client.send(
-        new PostToConnectionCommand({
-          // PostToConnectionRequest
-          Data: `
-<div id="mute-words" hx-swap-oob="true">
-    <ul>
-    ${muteWords.map((word) => `<li>${word}</li>`)}
-    </ul>
-</div>`,
-          ConnectionId: connectionId,
-        })
-      );
+      if (body.unmuteWord) {
+        await deleteMuteWord(session.subscriberDid, body.unmuteWord);
+        await sendMuteWords(connectionId, session);
+      } else if (body.muteWord) {
+        await addMuteWord(session.subscriberDid, body.muteWord);
+        await sendMuteWords(connectionId, session);
+      } else if (body.loadMuteWords) {
+        await sendMuteWords(connectionId, session);
+      }
     }
   }
 

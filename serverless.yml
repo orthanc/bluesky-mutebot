@@ -86,8 +86,14 @@ functions:
         Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt MuteWordsTable.Arn
           - !Sub "${ConsoleSessionsTable.Arn}/*"
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
       - Effect: "Allow"
         Action:
           - kms:GenerateRandom

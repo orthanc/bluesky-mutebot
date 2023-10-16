@@ -8,16 +8,8 @@ import {
   getSubscriberFollowingRecord,
   triggerSubscriberSync,
 } from '../../followingStore';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import {
-  DynamoDBDocumentClient,
-  QueryCommand,
-  QueryCommandOutput,
-} from '@aws-sdk/lib-dynamodb';
 import { FeedEntry, getPosts, listFeed } from '../../postsStore';
-
-const client = new DynamoDBClient({});
-const ddbDocClient = DynamoDBDocumentClient.from(client);
+import { getMuteWords } from '../../muteWordsStore';
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
 
@@ -25,27 +17,6 @@ const SYNCING_FOLLOING_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiegyf3x2w';
 const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
-
-const getMuteWords = async (subscriberDid: string): Promise<Array<string>> => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
-  let ExclusiveStartKey: Record<string, string> | undefined = undefined;
-  const muteWords: Array<string> = [];
-  do {
-    const result: QueryCommandOutput = await ddbDocClient.send(
-      new QueryCommand({
-        TableName,
-        KeyConditionExpression: 'subscriberDid = :subscriberDid',
-        ExpressionAttributeValues: {
-          ':subscriberDid': subscriberDid,
-        },
-        ExclusiveStartKey,
-      })
-    );
-    (ExclusiveStartKey = result.LastEvaluatedKey),
-      result.Items?.map(({ muteWord }) => muteWords.push(muteWord));
-  } while (ExclusiveStartKey != null);
-  return muteWords;
-};
 
 export const rawHandler = async (
   event: APIGatewayProxyEventV2

@@ -72,7 +72,8 @@ export const rawHandler = async (
       Data: `
 <div id="content" hx-swap-oob="true">
       <h1>Welcome ${profile.data.handle}</h1>
-      <div id="mute-words"/>
+      <div id="mute-words">
+      </div>
       <form id="form" ws-send>
             <input type="submit" name="loadMuteWords" value="Get Mute Words"/>
         </form>
