@@ -10,6 +10,7 @@ provider:
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
   environment:
+    DEPLOY_STAGE: ${self:provider.stage}
     PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
@@ -54,6 +55,7 @@ custom:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
   followingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
+  ssmEnvironmentBaseArn: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/${self:provider.stage}'
   enablePolling:
     development: false
     production: true
@@ -135,6 +137,30 @@ functions:
         Resource:
           - !GetAtt MuteWordsTable.Arn
 
+  rotate-signing-key:
+    handler: ./src/endpoints/rotate-signing-key/index.handler
+    iamRoleStatements:
+      - Effect: 'Allow'
+        Action:
+          - ssm:PutParameter
+          - ssm:GetParameter
+        Resource:
+          - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/*
+          - ${self:custom.ssmEnvironmentBaseArn}/resume-token-signing-key/*
+      - Effect: 'Allow'
+        Action:
+          - kms:GenerateRandom
+        Resource: '*'
+    maximumRetryAttempts: 0
+    events:
+      - schedule:
+          rate: rate(2 hours)
+          input:
+            keyName: access-token-signing-key
+      - schedule:
+          rate: rate(45 days)
+          input:
+            keyName: resume-token-signing-key
 
   did:
     handler: ./src/endpoints/did/index.handler
