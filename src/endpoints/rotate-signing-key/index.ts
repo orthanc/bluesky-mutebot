@@ -26,8 +26,8 @@ export const handler = async ({
   keyName: string;
 }): Promise<void> => {
   const deployStage = process.env.DEPLOY_STAGE ?? '';
-  const currentKeyName = `/${deployStage}/${keyName}/current`;
-  const previousKeyName = `/${deployStage}/${keyName}/previous`;
+  const currentKeyName = `/bluesky-feeds/${deployStage}/${keyName}/current`;
+  const previousKeyName = `/bluesky-feeds/${deployStage}/${keyName}/previous`;
 
   console.log({
     keyName,

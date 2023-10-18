@@ -55,7 +55,7 @@ custom:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
   followingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
-  ssmEnvironmentBaseArn: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/${self:provider.stage}'
+  ssmEnvironmentBaseArn: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/bluesky-feeds/${self:provider.stage}'
   enablePolling:
     development: false
     production: true
