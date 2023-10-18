@@ -365,7 +365,7 @@ export const addAuthorToFeed = async (
       ExpressionAttributeValues: {
         ':author': author,
       },
-      Limit: 100,
+      Limit: 5,
     })
   );
   const postsToAdd = (records.Items ?? []) as Array<FeedEntry>;
