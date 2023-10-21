@@ -8,7 +8,13 @@ import {
   getSubscriberFollowingRecord,
   triggerSubscriberSync,
 } from '../../followingStore';
-import { FeedEntry, getPosts, listFeed } from '../../postsStore';
+import {
+  FeedEntry,
+  PostTableRecord,
+  getPosts,
+  listFeed,
+  listFeedFromPosts,
+} from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
@@ -56,7 +62,7 @@ export const rawHandler = async (
     };
   }
 
-  const [feedContent, following, muteWords] = await Promise.all([
+  let [feedContent, following, muteWords] = await Promise.all([
     listFeed(requesterDid, limit, cursor),
 
     getSubscriberFollowingRecord(requesterDid),
@@ -83,13 +89,28 @@ export const rawHandler = async (
     };
   }
 
-  const postUris = new Set<string>();
-  feedContent.posts.forEach((post) => {
-    post.type === 'post'
-      ? postUris.add(post.uri)
-      : postUris.add(post.repostedPostUri);
-  });
-  const loadedPosts = await getPosts(Array.from(postUris));
+  let loadedPosts: Record<string, PostTableRecord> = {};
+  if (requesterDid === 'did:plc:crngjmsdh3zpuhmd5gtgwx6q') {
+    feedContent = await listFeedFromPosts(requesterDid, limit, cursor);
+    const postUris = new Set<string>();
+    (feedContent.posts as Array<PostTableRecord>).forEach((post) => {
+      if (post.type === 'post') {
+        loadedPosts[post.uri] = post;
+      } else {
+        postUris.add(post.repostedPostUri);
+      }
+    });
+    const loadedReposts = await getPosts(Array.from(postUris));
+    Object.assign(loadedPosts, loadedReposts);
+  } else {
+    const postUris = new Set<string>();
+    feedContent.posts.forEach((post) => {
+      post.type === 'post'
+        ? postUris.add(post.uri)
+        : postUris.add(post.repostedPostUri);
+    });
+    loadedPosts = await getPosts(Array.from(postUris));
+  }
 
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));

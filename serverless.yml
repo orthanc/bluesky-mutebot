@@ -191,6 +191,7 @@ functions:
           - !GetAtt MuteWordsTable.Arn
           - !GetAtt FeedTableV2.Arn
           - !Sub "${FeedTableV2.Arn}/*"
+          - !Sub "${PostsTable.Arn}/*"
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
