@@ -35,7 +35,7 @@ const getApprovalPost = async (connectionId: string, timeoutMillis: number) => {
   });
   for await (const event of subscription) {
     for (const post of event.posts.creates) {
-      const postRecord = postToPostTableRecord(post, 0);
+      const postRecord = postToPostTableRecord(post, 0, {});
       if (postRecord.mentionedDids.includes(serviceUserDid)) {
         if (postRecord.textEntries[0]?.match(authRegex)) {
           return postRecord;

@@ -5,7 +5,8 @@ import { PostTableRecord } from '../../postsStore';
 
 export const postToPostTableRecord = (
   post: Pick<CreateOp<PostRecord>, 'record' | 'uri' | 'author'>,
-  expiresAt: number
+  expiresAt: number,
+  followedBy: Record<string, true>
 ): PostTableRecord & { type: 'post' } => {
   const textEntries: Array<string> = [];
   if (post.record.text != null) {
@@ -49,9 +50,10 @@ export const postToPostTableRecord = (
           replyRootUri: post.record.reply?.root?.uri,
           replyParentUri: post.record.reply?.parent?.uri,
         }
-      : undefined),
+      : { resolvedStatus: 'RESOLVED' }),
     ...(startsWithMention ? { startsWithMention } : undefined),
     mentionedDids,
     textEntries,
+    followedBy,
   };
 };

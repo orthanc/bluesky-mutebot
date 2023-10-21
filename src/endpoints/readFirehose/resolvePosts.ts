@@ -44,7 +44,7 @@ const populateResolvedPost = (
   unresolvedPost: PostTableRecord
 ): PostTableRecord => {
   const newPost = { ...unresolvedPost };
-  delete newPost['resolvedStatus'];
+  newPost.resolvedStatus = 'RESOLVED';
   if (newPost.type === 'post') {
     console.log(`Resolving post ${unresolvedPost.uri}`);
     if (newPost.replyParentUri != null) {
@@ -118,7 +118,8 @@ const fetchReferencedPostsLocalOrRemote = async (
           record: post.record as PostRecord,
           uri: post.uri,
         },
-        expiresAt
+        expiresAt,
+        {}
       );
       loadedPosts[record.uri] = record;
       externalPostUris.add(record.uri);
@@ -192,7 +193,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
     const postsToSave: Array<PostTableRecord> = [];
     unresolvedPosts.forEach((unresolvedPost) => {
       const newPost = populateResolvedPost(loadedPosts, unresolvedPost);
-      delete newPost['resolvedStatus'];
+      newPost.resolvedStatus = 'RESOLVED';
       postsToSave.push(newPost);
     });
     externalPostUris.forEach((uri) => {

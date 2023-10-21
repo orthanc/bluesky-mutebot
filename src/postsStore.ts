@@ -16,8 +16,9 @@ export type PostTableRecord = {
   uri: string;
   createdAt: string;
   author: string;
-  resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
+  resolvedStatus: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
   expiresAt: number;
+  followedBy?: Record<string, true>;
 } & (
   | {
       type: 'post';

@@ -41,9 +41,7 @@ export type AggregateListRecord = {
   qualifier: string;
   handle: string;
   followedBy: number;
-  followingEntryUri?: string;
-  followingEntryRid?: string;
-};
+} & Record<`followedBy_${string}`, true>;
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -233,10 +231,14 @@ export const saveUpdates = async (
                     qualifier: operation.following.did,
                   },
                   UpdateExpression:
-                    'SET handle = :handle ADD followedBy :one REMOVE expiresAt',
+                    'SET handle = :handle, #didfollow = :true ADD followedBy :one REMOVE expiresAt',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `followedBy_${subscriberFollowing.subscriberDid}`,
+                  },
                   ExpressionAttributeValues: {
                     ':one': 1,
                     ':handle': operation.following.handle,
+                    ':true': true,
                   },
                 },
               },
@@ -263,7 +265,10 @@ export const saveUpdates = async (
                     subscriberDid: 'aggregate',
                     qualifier: operation.following.did,
                   },
-                  UpdateExpression: 'ADD followedBy :negOne',
+                  UpdateExpression: 'ADD followedBy :negOne REMOVE #didfollow',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `followedBy_${subscriberFollowing.subscriberDid}`,
+                  },
                   ExpressionAttributeValues: {
                     ':negOne': -1,
                   },
@@ -288,9 +293,14 @@ export const saveUpdates = async (
                     subscriberDid: 'aggregate',
                     qualifier: subscriberFollowing.subscriberDid,
                   },
-                  UpdateExpression: 'ADD followedBy :one REMOVE expiresAt',
+                  UpdateExpression:
+                    'ADD followedBy :one REMOVE expiresAt SET #didfollow = :true',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `followedBy_${subscriberFollowing.subscriberDid}`,
+                  },
                   ExpressionAttributeValues: {
                     ':one': 1,
+                    ':true': true,
                   },
                 },
               },
@@ -317,7 +327,10 @@ export const saveUpdates = async (
                     subscriberDid: 'aggregate',
                     qualifier: subscriberFollowing.subscriberDid,
                   },
-                  UpdateExpression: 'ADD followedBy :negOne',
+                  UpdateExpression: 'ADD followedBy :negOne REMOVE #didfollow',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `followedBy_${subscriberFollowing.subscriberDid}`,
+                  },
                   ExpressionAttributeValues: {
                     ':negOne': -1,
                   },
