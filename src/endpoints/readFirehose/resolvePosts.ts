@@ -166,7 +166,8 @@ export const rawHandler = async (event: Event): Promise<void> => {
       if (post.type === 'repost') {
         const repostedPost = loadedPosts[post.repostedPostUri];
         if (
-          (repostedPost != null && repostedPost.resolvedStatus != null) ||
+          repostedPost != null &&
+          repostedPost.resolvedStatus != null &&
           repostedPost.resolvedStatus !== 'RESOLVED'
         ) {
           return [repostedPost];
