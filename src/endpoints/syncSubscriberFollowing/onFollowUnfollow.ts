@@ -46,7 +46,9 @@ export const rawHandler = async (event: Event): Promise<void> => {
     await addAuthorToFeed(event.subscriberDid, event.followingDid);
   } else if (event.eventName === 'remove-follow') {
     console.log(event);
-    await removeAuthorFromFeed(event.subscriberDid, event.followingDid);
+    // This can get really expensive when a person is removed as we essentially clear 7 days of posts
+    // rather than just letting them time out. So for now don't do that
+    // await removeAuthorFromFeed(event.subscriberDid, event.followingDid);
   }
 };
 
