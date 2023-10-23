@@ -62,7 +62,8 @@ export const rawHandler = async (
     };
   }
 
-  const [following, muteWords] = await Promise.all([
+  const [feedContent, following, muteWords] = await Promise.all([
+    listFeedFromPosts(requesterDid, limit, cursor),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
@@ -87,77 +88,66 @@ export const rawHandler = async (
     };
   }
 
-  let feedContent: { cursor?: string; posts: Array<FeedEntry> };
-  let loadedPosts: Record<string, PostTableRecord> = {};
-  if (requesterDid === 'did:plc:crngjmsdh3zpuhmd5gtgwx6q') {
-    feedContent = await listFeedFromPosts(requesterDid, limit, cursor);
-    const postUris = new Set<string>();
-    (feedContent.posts as Array<PostTableRecord>).forEach((post) => {
-      if (post.type === 'post') {
-        loadedPosts[post.uri] = post;
-      } else {
-        postUris.add(post.repostedPostUri);
-      }
-    });
-    const loadedReposts = await getPosts(Array.from(postUris));
-    Object.assign(loadedPosts, loadedReposts);
-  } else {
-    feedContent = await listFeed(requesterDid, limit, cursor);
-    const postUris = new Set<string>();
-    feedContent.posts.forEach((post) => {
-      post.type === 'post'
-        ? postUris.add(post.uri)
-        : postUris.add(post.repostedPostUri);
-    });
-    loadedPosts = await getPosts(Array.from(postUris));
-  }
+  const loadedPosts: Record<string, PostTableRecord> = {};
+  const postUris = new Set<string>();
+  (feedContent.posts as Array<PostTableRecord>).forEach((post) => {
+    if (post.type === 'post') {
+      loadedPosts[post.uri] = post;
+    } else {
+      postUris.add(post.repostedPostUri);
+    }
+  });
+  const loadedReposts = await getPosts(Array.from(postUris));
+  Object.assign(loadedPosts, loadedReposts);
 
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
-  const filteredFeedContent = feedContent.posts.filter((postRef) => {
-    const post =
-      loadedPosts[
-        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
-      ];
-    // exclude posts we can't find
-    if (post == null) return false;
-    // should never happen, but for typing, if we get back a repost skip it
-    if (post.type === 'repost') return false;
-    // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-    if (
-      post.startsWithMention &&
-      !post.mentionedDids.some((mentionedDid) =>
-        followingDids.has(mentionedDid)
+  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
+    (postRef) => {
+      const post =
+        loadedPosts[
+          postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+        ];
+      // exclude posts we can't find
+      if (post == null) return false;
+      // should never happen, but for typing, if we get back a repost skip it
+      if (post.type === 'repost') return false;
+      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+      if (
+        post.startsWithMention &&
+        !post.mentionedDids.some((mentionedDid) =>
+          followingDids.has(mentionedDid)
+        )
       )
-    )
-      return false;
-    // exclude replies that are to a non followed
-    if (
-      post.isReply &&
-      (post.replyParentAuthorDid == null ||
-        !followingDids.has(post.replyParentAuthorDid))
-    )
-      return false;
-    // Exclude posts with muted words
-    if (
-      post.textEntries.some((postText) => {
-        const lowerText = postText.toLowerCase();
-        return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
-      })
-    )
-      return false;
-    // Exclude replies to posts with muted words
-    if (
-      post.isReply &&
-      (post.replyParentTextEntries == null ||
-        post.replyParentTextEntries.some((postText) => {
+        return false;
+      // exclude replies that are to a non followed
+      if (
+        post.isReply &&
+        (post.replyParentAuthorDid == null ||
+          !followingDids.has(post.replyParentAuthorDid))
+      )
+        return false;
+      // Exclude posts with muted words
+      if (
+        post.textEntries.some((postText) => {
           const lowerText = postText.toLowerCase();
           return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
-        }))
-    )
-      return false;
-    return true;
-  });
+        })
+      )
+        return false;
+      // Exclude replies to posts with muted words
+      if (
+        post.isReply &&
+        (post.replyParentTextEntries == null ||
+          post.replyParentTextEntries.some((postText) => {
+            const lowerText = postText.toLowerCase();
+            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+          }))
+      )
+        return false;
+      return true;
+    }
+  );
   if (feedContent.cursor == null) {
     filteredFeedContent.push({
       uri: NO_MORE_POSTS_POST,
