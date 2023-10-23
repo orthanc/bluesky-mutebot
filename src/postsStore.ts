@@ -464,6 +464,8 @@ export const listFeedFromPosts = async (
 
   let fetchesRequired = 0;
   let consumedCapacityUnits = 0;
+  let requestLimit = limit;
+  const minResults = Math.floor(limit * 0.8);
   do {
     fetchesRequired++;
     const response: QueryCommandOutput = await ddbDocClient.send(
@@ -481,7 +483,15 @@ export const listFeedFromPosts = async (
         },
         ScanIndexForward: false,
         ExclusiveStartKey: requestCursor,
-        Limit: limit * 15,
+        /*
+         * limit is applied before the filter expression, so if we say limit 30
+         * then we might only get one post back which is annoying.
+         * So better to limit to some multiple of the number of posts we're expecting.
+         *
+         * The 15 is kinda arbitrary and just seems good based on testing. Needs further
+         * tuning based on watching the number of fetches
+         */
+        Limit: requestLimit * 15,
         ReturnConsumedCapacity: 'TOTAL',
       })
     );
@@ -490,7 +500,12 @@ export const listFeedFromPosts = async (
     (response.Items ?? []).forEach((item) => {
       result.push(item as PostTableRecord);
     });
-  } while (requestCursor != null && result.length < limit);
+    requestLimit = limit - result.length;
+  } while (
+    requestCursor != null &&
+    result.length < minResults &&
+    fetchesRequired < 5
+  );
   console.log({
     fetchesRequired,
     limit,
