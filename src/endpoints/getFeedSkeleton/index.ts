@@ -62,9 +62,7 @@ export const rawHandler = async (
     };
   }
 
-  let [feedContent, following, muteWords] = await Promise.all([
-    listFeed(requesterDid, limit, cursor),
-
+  const [following, muteWords] = await Promise.all([
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
@@ -89,6 +87,7 @@ export const rawHandler = async (
     };
   }
 
+  let feedContent: { cursor?: string; posts: Array<FeedEntry> };
   let loadedPosts: Record<string, PostTableRecord> = {};
   if (requesterDid === 'did:plc:crngjmsdh3zpuhmd5gtgwx6q') {
     feedContent = await listFeedFromPosts(requesterDid, limit, cursor);
@@ -103,6 +102,7 @@ export const rawHandler = async (
     const loadedReposts = await getPosts(Array.from(postUris));
     Object.assign(loadedPosts, loadedReposts);
   } else {
+    feedContent = await listFeed(requesterDid, limit, cursor);
     const postUris = new Set<string>();
     feedContent.posts.forEach((post) => {
       post.type === 'post'
