@@ -8,7 +8,11 @@ import {
   AggregateListRecord,
   batchGetAggregateListRecord,
 } from '../../followingStore';
-import { PostTableRecord, savePostsBatch } from '../../postsStore';
+import {
+  POST_RETENTION_SECONDS,
+  PostTableRecord,
+  savePostsBatch,
+} from '../../postsStore';
 import { postToPostTableRecord } from './postToPostTableRecord';
 
 const processBatch = async (
@@ -17,7 +21,7 @@ const processBatch = async (
   posts: ReadonlyArray<CreateOp<PostRecord | RepostRecord>>,
   deletes: ReadonlyArray<DeleteOp>
 ) => {
-  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+  const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
   const newlyResolvedDids = await batchGetAggregateListRecord(didsToResolve);
   didsToResolve.forEach(
     (did) => (resolvedDids[did] = newlyResolvedDids[did] ?? false)

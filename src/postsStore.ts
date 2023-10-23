@@ -14,6 +14,8 @@ import PQueue from 'p-queue';
 
 const queue = new PQueue({ concurrency: 3 });
 
+export const POST_RETENTION_SECONDS = 24 * 3600;
+
 export type PostTableRecord = {
   uri: string;
   createdAt: string;

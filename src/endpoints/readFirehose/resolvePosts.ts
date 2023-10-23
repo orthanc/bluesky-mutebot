@@ -1,6 +1,7 @@
 import middy from '@middy/core';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 import {
+  POST_RETENTION_SECONDS,
   PostTableRecord,
   getPosts,
   getPostsForExternalResolve,
@@ -150,7 +151,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
       );
     }
   } else if (event.type === 'external-resolve') {
-    const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+    const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
     const [unresolvedPosts, agent] = await Promise.all([
       getPostsForExternalResolve(12),
       getBskyAgent(),
