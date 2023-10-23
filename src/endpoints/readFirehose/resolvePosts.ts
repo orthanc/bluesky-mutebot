@@ -1,6 +1,7 @@
 import middy from '@middy/core';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
 import {
+  POST_RETENTION_SECONDS,
   PostTableRecord,
   getPosts,
   getPostsForExternalResolve,
@@ -44,7 +45,7 @@ const populateResolvedPost = (
   unresolvedPost: PostTableRecord
 ): PostTableRecord => {
   const newPost = { ...unresolvedPost };
-  delete newPost['resolvedStatus'];
+  newPost.resolvedStatus = 'RESOLVED';
   if (newPost.type === 'post') {
     console.log(`Resolving post ${unresolvedPost.uri}`);
     if (newPost.replyParentUri != null) {
@@ -118,7 +119,8 @@ const fetchReferencedPostsLocalOrRemote = async (
           record: post.record as PostRecord,
           uri: post.uri,
         },
-        expiresAt
+        expiresAt,
+        {}
       );
       loadedPosts[record.uri] = record;
       externalPostUris.add(record.uri);
@@ -149,7 +151,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
       );
     }
   } else if (event.type === 'external-resolve') {
-    const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+    const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
     const [unresolvedPosts, agent] = await Promise.all([
       getPostsForExternalResolve(12),
       getBskyAgent(),
@@ -165,7 +167,8 @@ export const rawHandler = async (event: Event): Promise<void> => {
       if (post.type === 'repost') {
         const repostedPost = loadedPosts[post.repostedPostUri];
         if (
-          (repostedPost != null && repostedPost.resolvedStatus != null) ||
+          repostedPost != null &&
+          repostedPost.resolvedStatus != null &&
           repostedPost.resolvedStatus !== 'RESOLVED'
         ) {
           return [repostedPost];
@@ -192,7 +195,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
     const postsToSave: Array<PostTableRecord> = [];
     unresolvedPosts.forEach((unresolvedPost) => {
       const newPost = populateResolvedPost(loadedPosts, unresolvedPost);
-      delete newPost['resolvedStatus'];
+      newPost.resolvedStatus = 'RESOLVED';
       postsToSave.push(newPost);
     });
     externalPostUris.forEach((uri) => {

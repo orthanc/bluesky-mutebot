@@ -8,7 +8,11 @@ import {
   AggregateListRecord,
   batchGetAggregateListRecord,
 } from '../../followingStore';
-import { PostTableRecord, savePostsBatch } from '../../postsStore';
+import {
+  POST_RETENTION_SECONDS,
+  PostTableRecord,
+  savePostsBatch,
+} from '../../postsStore';
 import { postToPostTableRecord } from './postToPostTableRecord';
 
 const processBatch = async (
@@ -17,7 +21,7 @@ const processBatch = async (
   posts: ReadonlyArray<CreateOp<PostRecord | RepostRecord>>,
   deletes: ReadonlyArray<DeleteOp>
 ) => {
-  const expiresAt = Math.floor(Date.now() / 1000) + 7 * 24 * 3600;
+  const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
   const newlyResolvedDids = await batchGetAggregateListRecord(didsToResolve);
   didsToResolve.forEach(
     (did) => (resolvedDids[did] = newlyResolvedDids[did] ?? false)
@@ -25,33 +29,41 @@ const processBatch = async (
 
   let postsSaved = 0;
   let repostsSaved = 0;
-  const postsToSave = posts
-    .filter(({ author }) => {
-      const rec = resolvedDids[author];
-      if (!rec) return false;
-      return rec.followedBy > 0;
-    })
-    .flatMap((post): Array<PostTableRecord> => {
-      if (post.type === ids.AppBskyFeedRepost && post.record.subject != null) {
-        repostsSaved++;
-        return [
-          {
-            uri: post.uri,
-            createdAt: post.record.createdAt,
-            author: post.author,
-            type: 'repost',
-            resolvedStatus: 'UNRESOLVED',
-            expiresAt,
-            // @ts-expect-error
-            repostedPostUri: post.record.subject.uri,
-          },
-        ];
-      } else if (post.type === ids.AppBskyFeedPost) {
-        postsSaved++;
-        return [postToPostTableRecord(post as CreateOp<PostRecord>, expiresAt)];
-      }
-      return [];
-    });
+  const postsToSave = posts.flatMap((post): Array<PostTableRecord> => {
+    const followedByRecord = resolvedDids[post.author];
+    if (!followedByRecord || followedByRecord.followedBy === 0) return [];
+    const followedBy = Object.fromEntries(
+      Object.entries(followedByRecord)
+        .filter(([key]) => key.startsWith('followedBy_'))
+        .map(([key]): [string, true] => [key.substring(11), true])
+    );
+    if (post.type === ids.AppBskyFeedRepost && post.record.subject != null) {
+      repostsSaved++;
+      return [
+        {
+          uri: post.uri,
+          createdAt: post.record.createdAt,
+          author: post.author,
+          type: 'repost',
+          resolvedStatus: 'UNRESOLVED',
+          expiresAt,
+          // @ts-expect-error
+          repostedPostUri: post.record.subject.uri,
+          followedBy,
+        },
+      ];
+    } else if (post.type === ids.AppBskyFeedPost) {
+      postsSaved++;
+      return [
+        postToPostTableRecord(
+          post as CreateOp<PostRecord>,
+          expiresAt,
+          followedBy
+        ),
+      ];
+    }
+    return [];
+  });
   const deletesToApply = deletes
     .filter(({ author }) => Boolean(resolvedDids[author]))
     .map((del) => del.uri);

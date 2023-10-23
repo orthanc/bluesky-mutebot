@@ -191,6 +191,7 @@ functions:
           - !GetAtt MuteWordsTable.Arn
           - !GetAtt FeedTableV2.Arn
           - !Sub "${FeedTableV2.Arn}/*"
+          - !Sub "${PostsTable.Arn}/*"
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
@@ -392,7 +393,7 @@ functions:
     timeout: 900
     events:
       - schedule:
-          rate: rate(7 days)
+          rate: rate(1 day)
           enabled: ${self:custom.enablePolling.${self:provider.stage}}
     iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-cleanUp-${self:provider.region}
     iamRoleStatements:

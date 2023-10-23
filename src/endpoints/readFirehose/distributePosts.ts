@@ -63,6 +63,7 @@ const handleCommands = async (post: PostTableRecord) => {
 };
 
 export const rawHandler = async (event: Event): Promise<void> => {
+  return;
   if (event.eventName === 'INSERT') {
     await Promise.all([
       (async () => {

@@ -7,17 +7,22 @@ import {
   PutCommand,
   QueryCommand,
   QueryCommandOutput,
+  TransactWriteCommand,
+  TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
 import PQueue from 'p-queue';
 
 const queue = new PQueue({ concurrency: 3 });
 
+export const POST_RETENTION_SECONDS = 24 * 3600;
+
 export type PostTableRecord = {
   uri: string;
   createdAt: string;
   author: string;
-  resolvedStatus?: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
+  resolvedStatus: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
   expiresAt: number;
+  followedBy?: Record<string, true>;
 } & (
   | {
       type: 'post';
@@ -350,6 +355,47 @@ export const removeAuthorFromFeed = async (
   );
 };
 
+export const followAuthorsPosts = async (
+  subscriberDid: string,
+  author: string
+) => {
+  const TableName = process.env.POSTS_TABLE as string;
+
+  const records: QueryCommandOutput = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      IndexName: 'ByAuthorV2',
+      KeyConditionExpression: 'author = :author',
+      ExpressionAttributeValues: {
+        ':author': author,
+      },
+      Limit: 5,
+    })
+  );
+  const postsToAddTo = (records.Items ?? []) as Array<FeedEntry>;
+  const writeCommand: TransactWriteCommandInput = {
+    TransactItems: postsToAddTo.map((post) => ({
+      Update: {
+        TableName,
+        Key: {
+          uri: post.uri,
+        },
+        UpdateExpression: 'SET followedBy.#subscriberDid = :true',
+        ExpressionAttributeNames: {
+          '#subscriberDid': subscriberDid,
+        },
+        ExpressionAttributeValues: {
+          ':true': true,
+        },
+      },
+    })),
+  };
+  await ddbDocClient.send(new TransactWriteCommand(writeCommand));
+  console.log(
+    `Added${subscriberDid} to ${postsToAddTo.length} posts by ${author}`
+  );
+};
+
 export const addAuthorToFeed = async (
   subscriberDid: string,
   author: string
@@ -406,6 +452,82 @@ export const addAuthorToFeed = async (
   console.log(`Added ${postsToAdd.length} by ${author} from ${subscriberDid}`);
 };
 
+export const listFeedFromPosts = async (
+  subscriberDid: string,
+  limit: number,
+  cursor: string | undefined
+): Promise<{ cursor?: string; posts: Array<PostTableRecord> }> => {
+  const TableName = process.env.POSTS_TABLE as string;
+  let result: Array<PostTableRecord> = [];
+  let requestCursor: Record<string, unknown> | undefined =
+    cursor == null ? undefined : JSON.parse(atob(cursor));
+
+  let fetchesRequired = 0;
+  let consumedCapacityUnits = 0;
+  let requestLimit = limit;
+  const minResults = Math.floor(limit * 0.8);
+  do {
+    fetchesRequired++;
+    const response: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName: TableName,
+        IndexName: 'ByResolvedStatusAndCreatedAt',
+        KeyConditionExpression: 'resolvedStatus = :resolved',
+        FilterExpression: 'followedBy.#subscriberDid = :true',
+        ExpressionAttributeNames: {
+          '#subscriberDid': subscriberDid,
+        },
+        ExpressionAttributeValues: {
+          ':true': true,
+          ':resolved': 'RESOLVED',
+        },
+        ScanIndexForward: false,
+        ExclusiveStartKey: requestCursor,
+        /*
+         * limit is applied before the filter expression, so if we say limit 30
+         * then we might only get one post back which is annoying.
+         * So better to limit to some multiple of the number of posts we're expecting.
+         *
+         * The 15 is kinda arbitrary and just seems good based on testing. Needs further
+         * tuning based on watching the number of fetches
+         */
+        Limit: requestLimit * 15,
+        ReturnConsumedCapacity: 'TOTAL',
+      })
+    );
+    requestCursor = response.LastEvaluatedKey;
+    consumedCapacityUnits += response.ConsumedCapacity?.CapacityUnits ?? 0;
+    (response.Items ?? []).forEach((item) => {
+      result.push(item as PostTableRecord);
+    });
+    requestLimit = limit - result.length;
+  } while (
+    requestCursor != null &&
+    result.length < minResults &&
+    fetchesRequired < 5
+  );
+  console.log({
+    fetchesRequired,
+    limit,
+    foundPosts: result.length,
+    consumedCapacityUnits,
+  });
+  if (result.length > limit) {
+    requestCursor = {
+      resolvedStatus: result[limit].resolvedStatus,
+      createdAt: result[limit].createdAt,
+      uri: result[limit].uri,
+    };
+    result = result.slice(0, limit);
+  }
+
+  return {
+    cursor:
+      requestCursor == null ? undefined : btoa(JSON.stringify(requestCursor)),
+    posts: result,
+  };
+};
+
 export const listFeed = async (
   subscriberDid: string,
   limit: number,
@@ -424,8 +546,14 @@ export const listFeed = async (
       ScanIndexForward: false,
       ExclusiveStartKey: cursor == null ? undefined : JSON.parse(atob(cursor)),
       Limit: limit,
+      ReturnConsumedCapacity: 'TOTAL',
     })
   );
+  console.log({
+    limit,
+    foundPosts: records.Items?.length,
+    consumedCapacityUnits: records.ConsumedCapacity?.CapacityUnits,
+  });
 
   return {
     cursor:
