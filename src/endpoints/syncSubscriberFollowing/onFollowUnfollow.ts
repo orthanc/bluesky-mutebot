@@ -8,7 +8,11 @@ import {
   AttributeValue,
   ConditionalCheckFailedException,
 } from '@aws-sdk/client-dynamodb';
-import { addAuthorToFeed, removeAuthorFromFeed } from '../../postsStore';
+import {
+  addAuthorToFeed,
+  followAuthorsPosts,
+  removeAuthorFromFeed,
+} from '../../postsStore';
 
 type Event =
   | {
@@ -44,6 +48,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
   } else if (event.eventName === 'add-follow') {
     console.log(event);
     await addAuthorToFeed(event.subscriberDid, event.followingDid);
+    await followAuthorsPosts(event.subscriberDid, event.followingDid);
   } else if (event.eventName === 'remove-follow') {
     console.log(event);
     // This can get really expensive when a person is removed as we essentially clear 7 days of posts

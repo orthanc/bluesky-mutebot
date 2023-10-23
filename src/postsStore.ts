@@ -7,6 +7,8 @@ import {
   PutCommand,
   QueryCommand,
   QueryCommandOutput,
+  TransactWriteCommand,
+  TransactWriteCommandInput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
 import PQueue from 'p-queue';
 
@@ -348,6 +350,47 @@ export const removeAuthorFromFeed = async (
   }
   console.log(
     `Deleted ${postUrisToRemove.length} by ${author} from ${subscriberDid}`
+  );
+};
+
+export const followAuthorsPosts = async (
+  subscriberDid: string,
+  author: string
+) => {
+  const TableName = process.env.POSTS_TABLE as string;
+
+  const records: QueryCommandOutput = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      IndexName: 'ByAuthorV2',
+      KeyConditionExpression: 'author = :author',
+      ExpressionAttributeValues: {
+        ':author': author,
+      },
+      Limit: 5,
+    })
+  );
+  const postsToAddTo = (records.Items ?? []) as Array<FeedEntry>;
+  const writeCommand: TransactWriteCommandInput = {
+    TransactItems: postsToAddTo.map((post) => ({
+      Update: {
+        TableName,
+        Key: {
+          uri: post.uri,
+        },
+        UpdateExpression: 'SET followedBy.#subscriberDid = :true',
+        ExpressionAttributeNames: {
+          '#subscriberDid': subscriberDid,
+        },
+        ExpressionAttributeValues: {
+          ':true': true,
+        },
+      },
+    })),
+  };
+  await ddbDocClient.send(new TransactWriteCommand(writeCommand));
+  console.log(
+    `Added${subscriberDid} to ${postsToAddTo.length} posts by ${author}`
   );
 };
 
