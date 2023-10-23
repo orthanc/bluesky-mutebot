@@ -458,13 +458,12 @@ export const listFeedFromPosts = async (
   cursor: string | undefined
 ): Promise<{ cursor?: string; posts: Array<PostTableRecord> }> => {
   const TableName = process.env.POSTS_TABLE as string;
-  const result: Array<PostTableRecord> = [];
-  let requestLimit = limit;
+  let result: Array<PostTableRecord> = [];
   let requestCursor: Record<string, unknown> | undefined =
     cursor == null ? undefined : JSON.parse(atob(cursor));
 
-  const minResults = Math.round((limit * 3) / 4);
   let fetchesRequired = 0;
+  let consumedCapacityUnits = 0;
   do {
     fetchesRequired++;
     const response: QueryCommandOutput = await ddbDocClient.send(
@@ -482,16 +481,30 @@ export const listFeedFromPosts = async (
         },
         ScanIndexForward: false,
         ExclusiveStartKey: requestCursor,
-        Limit: requestLimit,
+        Limit: limit * 15,
+        ReturnConsumedCapacity: 'TOTAL',
       })
     );
     requestCursor = response.LastEvaluatedKey;
+    consumedCapacityUnits += response.ConsumedCapacity?.CapacityUnits ?? 0;
     (response.Items ?? []).forEach((item) => {
       result.push(item as PostTableRecord);
     });
-    requestLimit = limit - result.length;
-  } while (requestCursor != null && result.length < minResults);
-  console.log({ fetchesRequired, limit, foundPosts: result.length });
+  } while (requestCursor != null && result.length < limit);
+  console.log({
+    fetchesRequired,
+    limit,
+    foundPosts: result.length,
+    consumedCapacityUnits,
+  });
+  if (result.length > limit) {
+    requestCursor = {
+      resolvedStatus: result[limit].resolvedStatus,
+      createdAt: result[limit].createdAt,
+      uri: result[limit].uri,
+    };
+    result = result.slice(0, limit);
+  }
 
   return {
     cursor:
@@ -518,8 +531,14 @@ export const listFeed = async (
       ScanIndexForward: false,
       ExclusiveStartKey: cursor == null ? undefined : JSON.parse(atob(cursor)),
       Limit: limit,
+      ReturnConsumedCapacity: 'TOTAL',
     })
   );
+  console.log({
+    limit,
+    foundPosts: records.Items?.length,
+    consumedCapacityUnits: records.ConsumedCapacity?.CapacityUnits,
+  });
 
   return {
     cursor:
