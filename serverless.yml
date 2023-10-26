@@ -17,7 +17,6 @@ provider:
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
-    FEED_TABLE: ${self:custom.feedTable}
     CONSOLE_SESSIONS_TABLE: ${self:custom.consoleSessionsTable}
     WEBSOCKET_ENDPOINT: https://${self:custom.customDomain.websocket.domainName}
     BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
@@ -48,7 +47,6 @@ custom:
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
-  feedTable: ${self:service}-${self:provider.stage}-feed-v2
   consoleSessionsTable: ${self:service}-${self:provider.stage}-console-sessions
   externalResolveQueue: ${self:service}-${self:provider.stage}-external-resolve.fifo
   blueskyAuth:
@@ -189,8 +187,6 @@ functions:
           - dynamodb:Query
         Resource:
           - !GetAtt MuteWordsTable.Arn
-          - !GetAtt FeedTableV2.Arn
-          - !Sub "${FeedTableV2.Arn}/*"
           - !Sub "${PostsTable.Arn}/*"
       - Effect: "Allow"
         Action:
@@ -228,49 +224,6 @@ functions:
           - dynamodb:BatchWriteItem
         Resource:
           - !GetAtt PostsTable.Arn
-
-  readFirehose-distPosts:
-    handler: ./src/endpoints/readFirehose/distributePosts.handler
-    memorySize: 512
-    events:
-      - stream:
-          type: dynamodb
-          arn:
-            Fn::GetAtt: [PostsTable, StreamArn]
-          startingPosition: LATEST
-          batchSize: 1
-          maximumRetryAttempts: 5
-          filterPatterns:
-            - eventName: [INSERT, REMOVE]
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:Query
-        Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:BatchWriteItem
-        Resource:
-          - !GetAtt FeedTableV2.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:Query
-        Resource:
-          - !GetAtt FeedTableV2.Arn
-          - !Sub "${FeedTableV2.Arn}/*"
-      - Effect: "Allow"
-        Action:
-          - dynamodb:GetItem
-          - dynamodb:PutItem
-          - dynamodb:DeleteItem
-        Resource:
-          - !GetAtt MuteWordsTable.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:PutItem
-        Resource:
-          - !GetAtt SyncSubscriberQueueTable.Arn
 
   readFirehose-rslvPosts:
     handler: ./src/endpoints/readFirehose/resolvePosts.handler
@@ -378,15 +331,8 @@ functions:
           - !GetAtt SubscriberFollowingTable.Arn
       - Effect: "Allow"
         Action:
-          - dynamodb:BatchWriteItem
-        Resource:
-          - !GetAtt FeedTableV2.Arn
-      - Effect: "Allow"
-        Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt FeedTableV2.Arn
-          - !Sub "${FeedTableV2.Arn}/*"
           - !GetAtt PostsTable.Arn
           - !Sub "${PostsTable.Arn}/*"
 
@@ -486,58 +432,6 @@ resources:
                 - repostedPostUri
         StreamSpecification:
           StreamViewType: NEW_IMAGE
-        TimeToLiveSpecification:
-          AttributeName: expiresAt
-          Enabled: True
-
-    FeedTableV2:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${self:custom.feedTable}
-        AttributeDefinitions:
-          - AttributeName: subscriberDid
-            AttributeType: S
-          - AttributeName: uri
-            AttributeType: S
-          - AttributeName: createdAt
-            AttributeType: S
-          - AttributeName: author
-            AttributeType: S
-        BillingMode: PAY_PER_REQUEST
-        KeySchema:
-          - AttributeName: subscriberDid
-            KeyType: HASH
-          - AttributeName: uri
-            KeyType: RANGE
-        LocalSecondaryIndexes:
-          - IndexName: ByCreatedAt
-            KeySchema:
-              - AttributeName: subscriberDid
-                KeyType: HASH
-              - AttributeName: createdAt
-                KeyType: RANGE
-            Projection:
-              ProjectionType: INCLUDE
-              NonKeyAttributes:
-                - repostedPostUri
-                - type
-        GlobalSecondaryIndexes:
-          - IndexName: ByPostUri
-            KeySchema:
-              - AttributeName: uri
-                KeyType: HASH
-              - AttributeName: subscriberDid
-                KeyType: RANGE
-            Projection:
-              ProjectionType: KEYS_ONLY
-          - IndexName: ByAuthor
-            KeySchema:
-              - AttributeName: subscriberDid
-                KeyType: HASH
-              - AttributeName: author
-                KeyType: RANGE
-            Projection:
-              ProjectionType: KEYS_ONLY
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: True

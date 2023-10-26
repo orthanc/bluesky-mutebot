@@ -12,7 +12,6 @@ import {
   FeedEntry,
   PostTableRecord,
   getPosts,
-  listFeed,
   listFeedFromPosts,
 } from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
