@@ -23,6 +23,7 @@ export type PostTableRecord = {
   resolvedStatus: 'UNRESOLVED' | 'EXTERNAL_RESOLVE' | 'RESOLVED'; // NOT USED ANY MORE BUT STILL PRESENT IN SOME DATA
   expiresAt: number;
   followedBy?: Record<string, true>;
+  externallyResolved?: boolean;
 } & (
   | {
       type: 'post';

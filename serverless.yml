@@ -231,6 +231,7 @@ functions:
 
   readFirehose-distPosts:
     handler: ./src/endpoints/readFirehose/distributePosts.handler
+    memorySize: 512
     events:
       - stream:
           type: dynamodb
@@ -273,6 +274,7 @@ functions:
 
   readFirehose-rslvPosts:
     handler: ./src/endpoints/readFirehose/resolvePosts.handler
+    memorySize: 512
     events:
       - stream:
           type: dynamodb

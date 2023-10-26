@@ -47,7 +47,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
     }
   } else if (event.eventName === 'add-follow') {
     console.log(event);
-    await addAuthorToFeed(event.subscriberDid, event.followingDid);
+    // await addAuthorToFeed(event.subscriberDid, event.followingDid);
     await followAuthorsPosts(event.subscriberDid, event.followingDid);
   } else if (event.eventName === 'remove-follow') {
     console.log(event);
