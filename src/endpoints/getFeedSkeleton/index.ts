@@ -5,6 +5,7 @@ import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
 import { DidResolver } from '@atproto/identity';
 import {
+  FollowingRecord,
   getSubscriberFollowingRecord,
   triggerSubscriberSync,
 } from '../../followingStore';
@@ -23,70 +24,14 @@ const SYNCING_FOLLOING_POST =
 const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 
-export const rawHandler = async (
-  event: APIGatewayProxyEventV2
-): Promise<APIGatewayProxyResultV2> => {
-  const { authorization = '' } = event.headers;
-  if (!authorization.startsWith('Bearer ')) {
-    throw new httpErrors.Unauthorized();
-  }
-  const jwt = authorization.replace('Bearer ', '').trim();
-  const requesterDid = await verifyJwt(
-    jwt,
-    `did:web:${process.env.PUBLIC_HOSTNAME}`,
-    async (did: string) => {
-      return didResolver.resolveAtprotoKey(did);
-    }
-  );
-
-  const {
-    cursor,
-    feed,
-    limit: limitString,
-  } = event.queryStringParameters ?? {};
-  let limit = limitString == null ? -1 : parseInt(limitString);
-  if (limit == null || limit <= 0) {
-    limit = 30;
-  }
-  console.log({ requesterDid, cursor, feed, limit });
-
-  if (feed !== process.env.FOLLOWING_FEED_URL) {
-    console.log(`Unknown Feed ${feed}`);
-    return {
-      statusCode: 404,
-      body: 'Unknown feed',
-      headers: {
-        'content-type': 'text/plain',
-      },
-    };
-  }
-
-  const [feedContent, following, muteWords] = await Promise.all([
-    listFeedFromPosts(requesterDid, limit, cursor),
-    getSubscriberFollowingRecord(requesterDid),
-    getMuteWords(requesterDid),
-    cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
-      ? triggerSubscriberSync(requesterDid)
-      : Promise.resolve(),
-  ]);
-
-  if (Object.keys(following?.following ?? {}).length === 0) {
-    console.log(`Returning First View Post`);
-    return {
-      statusCode: 200,
-      body: JSON.stringify({
-        feed: [
-          {
-            post: SYNCING_FOLLOING_POST,
-          },
-        ],
-      }),
-      headers: {
-        'content-type': 'application/json',
-      },
-    };
-  }
-
+const filterFeedContent = async (
+  feedContent: {
+    cursor?: string;
+    posts: Array<PostTableRecord>;
+  },
+  following: FollowingRecord,
+  muteWords: Array<string>
+): Promise<Array<FeedEntry>> => {
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
   (feedContent.posts as Array<PostTableRecord>).forEach((post) => {
@@ -157,6 +102,78 @@ export const rawHandler = async (
       type: 'post',
     } as FeedEntry);
   }
+  return filteredFeedContent;
+};
+
+export const rawHandler = async (
+  event: APIGatewayProxyEventV2
+): Promise<APIGatewayProxyResultV2> => {
+  const { authorization = '' } = event.headers;
+  if (!authorization.startsWith('Bearer ')) {
+    throw new httpErrors.Unauthorized();
+  }
+  const jwt = authorization.replace('Bearer ', '').trim();
+  const requesterDid = await verifyJwt(
+    jwt,
+    `did:web:${process.env.PUBLIC_HOSTNAME}`,
+    async (did: string) => {
+      return didResolver.resolveAtprotoKey(did);
+    }
+  );
+
+  const {
+    cursor,
+    feed,
+    limit: limitString,
+  } = event.queryStringParameters ?? {};
+  let limit = limitString == null ? -1 : parseInt(limitString);
+  if (limit == null || limit <= 0) {
+    limit = 30;
+  }
+  console.log({ requesterDid, cursor, feed, limit });
+
+  if (feed !== process.env.FOLLOWING_FEED_URL) {
+    console.log(`Unknown Feed ${feed}`);
+    return {
+      statusCode: 404,
+      body: 'Unknown feed',
+      headers: {
+        'content-type': 'text/plain',
+      },
+    };
+  }
+
+  const [feedContent, following, muteWords] = await Promise.all([
+    listFeedFromPosts(requesterDid, limit, cursor),
+    getSubscriberFollowingRecord(requesterDid),
+    getMuteWords(requesterDid),
+    cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
+      ? triggerSubscriberSync(requesterDid)
+      : Promise.resolve(),
+  ]);
+
+  if (Object.keys(following?.following ?? {}).length === 0) {
+    console.log(`Returning First View Post`);
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        feed: [
+          {
+            post: SYNCING_FOLLOING_POST,
+          },
+        ],
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+    };
+  }
+
+  const filteredFeedContent = await filterFeedContent(
+    feedContent,
+    following,
+    muteWords
+  );
   return {
     statusCode: 200,
     body: JSON.stringify({
