@@ -201,7 +201,7 @@ export const rawHandler = async (event: Event): Promise<void> => {
     externalPostUris.forEach((uri) => {
       const post = loadedPosts[uri];
       if (post.resolvedStatus == null || post.resolvedStatus === 'RESOLVED') {
-        postsToSave.push(post);
+        postsToSave.push({ ...post, externallyResolved: true });
       }
     });
     // console.log(
