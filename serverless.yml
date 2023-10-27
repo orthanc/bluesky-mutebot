@@ -171,6 +171,8 @@ functions:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
     environment:
       FOLLOWING_FEED_URL: ${self:custom.followingFeedUrl}
+      EXTERNAL_RESOLVE_QUEUE_URL: !Ref ExternalResolveQueue
+      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
         Action:

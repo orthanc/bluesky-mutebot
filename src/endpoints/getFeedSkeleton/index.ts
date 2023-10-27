@@ -4,6 +4,7 @@ import httpHeaderNormalizer from '@middy/http-header-normalizer';
 import httpErrors from 'http-errors';
 import { verifyJwt } from '@atproto/xrpc-server';
 import { DidResolver } from '@atproto/identity';
+import type { Record as PostRecord } from '@atproto/api/dist/client/types/app/bsky/feed/post';
 import {
   FollowingRecord,
   getSubscriberFollowingRecord,
@@ -11,11 +12,14 @@ import {
 } from '../../followingStore';
 import {
   FeedEntry,
+  POST_RETENTION_SECONDS,
   PostTableRecord,
   getPosts,
   listFeedFromPosts,
 } from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
+import { getBskyAgent } from '../../bluesky';
+import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
 
@@ -34,7 +38,7 @@ const filterFeedContent = async (
 ): Promise<Array<FeedEntry>> => {
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
-  (feedContent.posts as Array<PostTableRecord>).forEach((post) => {
+  feedContent.posts.forEach((post) => {
     if (post.type === 'post') {
       loadedPosts[post.uri] = post;
     } else {
@@ -86,6 +90,158 @@ const filterFeedContent = async (
         post.isReply &&
         (post.replyParentTextEntries == null ||
           post.replyParentTextEntries.some((postText) => {
+            const lowerText = postText.toLowerCase();
+            return muteWords.some((mutedWord) =>
+              lowerText.includes(mutedWord.trim())
+            );
+          }))
+      )
+        return false;
+      return true;
+    }
+  );
+  if (feedContent.cursor == null) {
+    filteredFeedContent.push({
+      uri: NO_MORE_POSTS_POST,
+      type: 'post',
+    } as FeedEntry);
+  }
+  return filteredFeedContent;
+};
+
+const resolvePosts = async (
+  postUris: Array<string>
+): Promise<Record<string, PostTableRecord>> => {
+  const agent = await getBskyAgent();
+  let toResolve = postUris.map((uri) => ({ uri, resolveMore: true }));
+  const loadedPosts: Record<string, PostTableRecord> = {};
+  const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
+  while (toResolve.length > 0) {
+    const batch = toResolve.slice(0, 25);
+    toResolve = toResolve.slice(25);
+    const postsResponse = await agent.getPosts({
+      uris: batch.map(({ uri }) => uri),
+    });
+    postsResponse.data.posts.forEach((post) => {
+      const record = postToPostTableRecord(
+        {
+          author: post.author.did,
+          record: post.record as PostRecord,
+          uri: post.uri,
+        },
+        expiresAt,
+        {}
+      );
+      loadedPosts[record.uri] = record;
+    });
+    batch.forEach(({ uri, resolveMore }) => {
+      const post = loadedPosts[uri];
+      const replyParentUri =
+        post != null && post.type === 'post' ? post.replyParentUri : undefined;
+      if (resolveMore && replyParentUri != null) {
+        toResolve.push({ uri: replyParentUri, resolveMore: false });
+      }
+    });
+  }
+  return loadedPosts;
+};
+
+const filterFeedContentNext = async (
+  feedContent: {
+    cursor?: string;
+    posts: Array<PostTableRecord>;
+  },
+  following: FollowingRecord,
+  muteWords: Array<string>
+): Promise<Array<FeedEntry>> => {
+  const followingDids = new Set<string>();
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
+  const loadedPosts: Record<string, PostTableRecord> = {};
+  const postUris = new Set<string>();
+  feedContent.posts.forEach((post) => {
+    if (post.type === 'post') {
+      loadedPosts[post.uri] = post;
+    } else {
+      postUris.add(post.repostedPostUri);
+    }
+  });
+  feedContent.posts.forEach((post) => {
+    if (post.type === 'post') {
+      // If it is a reply to a post we don't already have
+      if (
+        post.replyParentUri != null &&
+        loadedPosts[post.replyParentUri] == null
+      ) {
+        // And it is a reply to someone followed (otherwise it would be filtered out anyway)
+        if (
+          post.replyParentAuthorDid != null &&
+          followingDids.has(post.replyParentAuthorDid)
+        ) {
+          postUris.add(post.replyParentUri);
+        }
+      }
+    }
+  });
+  const loadedReferencedPosts = await getPosts(Array.from(postUris));
+  // Much simpler when we don't need to filter out externally resolved
+  // Object.assign(loadedPosts, loadedReferencedPosts);
+  Object.entries(loadedReferencedPosts).forEach(([key, post]) => {
+    if (!post.externallyResolved) {
+      loadedPosts[key] = post;
+    }
+  });
+  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
+  if (postUris.size > 0) {
+    const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
+    // TODO external resolve
+    Object.assign(loadedPosts, externallyResolvedPosts);
+  }
+
+  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
+    (postRef) => {
+      const post =
+        loadedPosts[
+          postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+        ];
+      // exclude posts we can't find
+      if (post == null) return false;
+      // should never happen, but for typing, if we get back a repost skip it
+      if (post.type === 'repost') return false;
+      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+      if (
+        post.startsWithMention &&
+        !post.mentionedDids.some((mentionedDid) =>
+          followingDids.has(mentionedDid)
+        )
+      )
+        return false;
+      // exclude replies that are to a non followed
+      if (
+        post.isReply &&
+        (post.replyParentAuthorDid == null ||
+          !followingDids.has(post.replyParentAuthorDid))
+      )
+        return false;
+      // Exclude posts with muted words
+      if (
+        post.textEntries.some((postText) => {
+          const lowerText = postText.toLowerCase();
+          return muteWords.some((mutedWord) =>
+            lowerText.includes(mutedWord.trim())
+          );
+        })
+      )
+        return false;
+      // Exclude replies to posts with muted words
+      const parentPost =
+        post.replyParentUri != null
+          ? loadedPosts[post.replyParentUri]
+          : undefined;
+      if (
+        post.isReply &&
+        (parentPost == null ||
+          parentPost.type !== 'post' ||
+          parentPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
             return muteWords.some((mutedWord) =>
               lowerText.includes(mutedWord.trim())
