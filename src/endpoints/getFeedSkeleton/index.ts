@@ -140,7 +140,9 @@ export const rawHandler = async (
         (post.replyParentTextEntries == null ||
           post.replyParentTextEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+            return muteWords.some((mutedWord) =>
+              lowerText.includes(mutedWord.trim())
+            );
           }))
       )
         return false;

@@ -63,7 +63,7 @@ export const addMuteWord = async (subscriberDid: string, muteWord: string) => {
       TableName,
       Item: {
         subscriberDid,
-        muteWord: muteWord.toLowerCase(),
+        muteWord: muteWord.toLowerCase().trim(),
       },
     })
   );
