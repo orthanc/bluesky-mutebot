@@ -55,10 +55,13 @@ const resolvePosts = async (
     });
     batch.forEach(({ uri, resolveMore }) => {
       const post = loadedPosts[uri];
-      const replyParentUri =
-        post != null && post.type === 'post' ? post.replyParentUri : undefined;
-      if (resolveMore && replyParentUri != null) {
-        toResolve.push({ uri: replyParentUri, resolveMore: false });
+      if (resolveMore && post != null && post.type === 'post') {
+        if (resolveMore && post.replyParentUri != null) {
+          toResolve.push({ uri: post.replyParentUri, resolveMore: false });
+        }
+        if (resolveMore && post.quotedPostUri != null) {
+          toResolve.push({ uri: post.quotedPostUri, resolveMore: false });
+        }
       }
     });
   }
@@ -212,6 +215,14 @@ const filterFeedContentBeta = async (
         ) {
           postUris.add(post.replyParentUri);
         }
+      }
+
+      // If it's a quote of a post we don't already have
+      if (
+        post.quotedPostUri != null &&
+        loadedPosts[post.quotedPostUri] == null
+      ) {
+        postUris.add(post.quotedPostUri);
       }
     }
   });
