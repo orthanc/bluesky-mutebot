@@ -102,6 +102,14 @@ const filterFeedContent = async (
           postUris.add(post.replyParentUri);
         }
       }
+
+      // If it's a quote of a post we don't already have
+      if (
+        post.quotedPostUri != null &&
+        loadedPosts[post.quotedPostUri] == null
+      ) {
+        postUris.add(post.quotedPostUri);
+      }
     }
   });
   const loadedReferencedPosts = await getPosts(Array.from(postUris));
@@ -128,21 +136,7 @@ const filterFeedContent = async (
       if (post == null) return false;
       // should never happen, but for typing, if we get back a repost skip it
       if (post.type === 'repost') return false;
-      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-      if (
-        post.startsWithMention &&
-        !post.mentionedDids.some((mentionedDid) =>
-          followingDids.has(mentionedDid)
-        )
-      )
-        return false;
-      // exclude replies that are to a non followed
-      if (
-        post.isReply &&
-        (post.replyParentAuthorDid == null ||
-          !followingDids.has(post.replyParentAuthorDid))
-      )
-        return false;
+
       // Exclude posts with muted words
       if (
         post.textEntries.some((postText) => {
@@ -154,22 +148,47 @@ const filterFeedContent = async (
       )
         return false;
       // Exclude replies to posts with muted words
-      const parentPost =
-        post.replyParentUri != null
-          ? loadedPosts[post.replyParentUri]
-          : undefined;
-      if (
-        post.isReply &&
-        (parentPost == null ||
-          parentPost.type !== 'post' ||
-          parentPost.textEntries.some((postText) => {
+      for (const referencedPostUri of [
+        post.replyParentUri,
+        post.quotedPostUri,
+      ]) {
+        if (referencedPostUri == null) continue;
+        const referencedPost = loadedPosts[referencedPostUri];
+        // Err on the side of caution, skip replies and quotes of posts we can't find
+        if (referencedPost == null || referencedPost.type !== 'post')
+          return false;
+
+        // Don't return quotes or replies to posts with muted words
+        if (
+          referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
             return muteWords.some((mutedWord) =>
               lowerText.includes(mutedWord.trim())
             );
-          }))
-      )
-        return false;
+          })
+        )
+          return false;
+      }
+
+      // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
+      // to be shared wider
+      if (postRef.type !== 'repost') {
+        // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+        if (
+          post.startsWithMention &&
+          !post.mentionedDids.some((mentionedDid) =>
+            followingDids.has(mentionedDid)
+          )
+        )
+          return false;
+        // exclude replies that are to a non followed
+        if (
+          post.isReply &&
+          (post.replyParentAuthorDid == null ||
+            !followingDids.has(post.replyParentAuthorDid))
+        )
+          return false;
+      }
       return true;
     }
   );
