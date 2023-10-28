@@ -182,20 +182,24 @@ const filterFeedContentBeta = async (
       }
     }
   });
-  const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  // Much simpler when we don't need to filter out externally resolved
-  // Object.assign(loadedPosts, loadedReferencedPosts);
-  Object.entries(loadedReferencedPosts).forEach(([key, post]) => {
-    if (!post.externallyResolved) {
-      loadedPosts[key] = post;
-    }
-  });
+  const rawLoadedReferencedPosts = await getPosts(Array.from(postUris));
+  const loadedReferencedPosts = Object.fromEntries(
+    Object.entries(rawLoadedReferencedPosts).filter(
+      ([, post]) => !post.externallyResolved
+    )
+  );
+  Object.assign(loadedPosts, loadedReferencedPosts);
   Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
     const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
-    // TODO external resolve
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
+  console.log({
+    feedPosts: feedContent.posts.length,
+    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
+    externallyResolvedPosts: postUris.size,
+    totalPosts: Object.keys(loadedPosts).length,
+  });
 
   const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
     (postRef) => {
