@@ -28,6 +28,43 @@ const SYNCING_FOLLOING_POST =
 const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 
+const resolvePosts = async (
+  postUris: Array<string>
+): Promise<Record<string, PostTableRecord>> => {
+  const agent = await getBskyAgent();
+  let toResolve = postUris.map((uri) => ({ uri, resolveMore: true }));
+  const loadedPosts: Record<string, PostTableRecord> = {};
+  const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
+  while (toResolve.length > 0) {
+    const batch = toResolve.slice(0, 25);
+    toResolve = toResolve.slice(25);
+    const postsResponse = await agent.getPosts({
+      uris: batch.map(({ uri }) => uri),
+    });
+    postsResponse.data.posts.forEach((post) => {
+      const record = postToPostTableRecord(
+        {
+          author: post.author.did,
+          record: post.record as PostRecord,
+          uri: post.uri,
+        },
+        expiresAt,
+        {}
+      );
+      loadedPosts[record.uri] = record;
+    });
+    batch.forEach(({ uri, resolveMore }) => {
+      const post = loadedPosts[uri];
+      const replyParentUri =
+        post != null && post.type === 'post' ? post.replyParentUri : undefined;
+      if (resolveMore && replyParentUri != null) {
+        toResolve.push({ uri: replyParentUri, resolveMore: false });
+      }
+    });
+  }
+  return loadedPosts;
+};
+
 const filterFeedContent = async (
   feedContent: {
     cursor?: string;
@@ -36,6 +73,8 @@ const filterFeedContent = async (
   following: FollowingRecord,
   muteWords: Array<string>
 ): Promise<Array<FeedEntry>> => {
+  const followingDids = new Set<string>();
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
   feedContent.posts.forEach((post) => {
@@ -45,11 +84,37 @@ const filterFeedContent = async (
       postUris.add(post.repostedPostUri);
     }
   });
-  const loadedReposts = await getPosts(Array.from(postUris));
-  Object.assign(loadedPosts, loadedReposts);
+  feedContent.posts.forEach((post) => {
+    if (post.type === 'post') {
+      // If it is a reply to a post we don't already have
+      if (
+        post.replyParentUri != null &&
+        loadedPosts[post.replyParentUri] == null
+      ) {
+        // And it is a reply to someone followed (otherwise it would be filtered out anyway)
+        if (
+          post.replyParentAuthorDid != null &&
+          followingDids.has(post.replyParentAuthorDid)
+        ) {
+          postUris.add(post.replyParentUri);
+        }
+      }
+    }
+  });
+  const loadedReferencedPosts = await getPosts(Array.from(postUris));
+  Object.assign(loadedPosts, loadedReferencedPosts);
+  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
+  if (postUris.size > 0) {
+    const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
+    Object.assign(loadedPosts, externallyResolvedPosts);
+  }
+  console.log({
+    feedPosts: feedContent.posts.length,
+    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
+    externallyResolvedPosts: postUris.size,
+    totalPosts: Object.keys(loadedPosts).length,
+  });
 
-  const followingDids = new Set<string>();
-  Object.keys(following.following).forEach((did) => followingDids.add(did));
   const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
     (postRef) => {
       const post =
@@ -86,10 +151,15 @@ const filterFeedContent = async (
       )
         return false;
       // Exclude replies to posts with muted words
+      const parentPost =
+        post.replyParentUri != null
+          ? loadedPosts[post.replyParentUri]
+          : undefined;
       if (
         post.isReply &&
-        (post.replyParentTextEntries == null ||
-          post.replyParentTextEntries.some((postText) => {
+        (parentPost == null ||
+          parentPost.type !== 'post' ||
+          parentPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
             return muteWords.some((mutedWord) =>
               lowerText.includes(mutedWord.trim())
@@ -107,43 +177,6 @@ const filterFeedContent = async (
     } as FeedEntry);
   }
   return filteredFeedContent;
-};
-
-const resolvePosts = async (
-  postUris: Array<string>
-): Promise<Record<string, PostTableRecord>> => {
-  const agent = await getBskyAgent();
-  let toResolve = postUris.map((uri) => ({ uri, resolveMore: true }));
-  const loadedPosts: Record<string, PostTableRecord> = {};
-  const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
-  while (toResolve.length > 0) {
-    const batch = toResolve.slice(0, 25);
-    toResolve = toResolve.slice(25);
-    const postsResponse = await agent.getPosts({
-      uris: batch.map(({ uri }) => uri),
-    });
-    postsResponse.data.posts.forEach((post) => {
-      const record = postToPostTableRecord(
-        {
-          author: post.author.did,
-          record: post.record as PostRecord,
-          uri: post.uri,
-        },
-        expiresAt,
-        {}
-      );
-      loadedPosts[record.uri] = record;
-    });
-    batch.forEach(({ uri, resolveMore }) => {
-      const post = loadedPosts[uri];
-      const replyParentUri =
-        post != null && post.type === 'post' ? post.replyParentUri : undefined;
-      if (resolveMore && replyParentUri != null) {
-        toResolve.push({ uri: replyParentUri, resolveMore: false });
-      }
-    });
-  }
-  return loadedPosts;
 };
 
 const filterFeedContentBeta = async (
@@ -183,11 +216,6 @@ const filterFeedContentBeta = async (
     }
   });
   const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  // const loadedReferencedPosts = Object.fromEntries(
-  //   Object.entries(rawLoadedReferencedPosts).filter(
-  //     ([, post]) => !post.externallyResolved
-  //   )
-  // );
   Object.assign(loadedPosts, loadedReferencedPosts);
   Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
@@ -332,7 +360,7 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await (feed !==
+  const filteredFeedContent = await (feed ===
   process.env.BETA_FOLLOWING_FEED_URL
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
