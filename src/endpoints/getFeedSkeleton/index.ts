@@ -286,23 +286,23 @@ const filterFeedContentBeta = async (
 
       // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
       // to be shared wider
-      if (postRef.type === 'repost') return true;
-
-      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-      if (
-        post.startsWithMention &&
-        !post.mentionedDids.some((mentionedDid) =>
-          followingDids.has(mentionedDid)
+      if (postRef.type !== 'repost') {
+        // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+        if (
+          post.startsWithMention &&
+          !post.mentionedDids.some((mentionedDid) =>
+            followingDids.has(mentionedDid)
+          )
         )
-      )
-        return false;
-      // exclude replies that are to a non followed
-      if (
-        post.isReply &&
-        (post.replyParentAuthorDid == null ||
-          !followingDids.has(post.replyParentAuthorDid))
-      )
-        return false;
+          return false;
+        // exclude replies that are to a non followed
+        if (
+          post.isReply &&
+          (post.replyParentAuthorDid == null ||
+            !followingDids.has(post.replyParentAuthorDid))
+        )
+          return false;
+      }
       return true;
     }
   );
