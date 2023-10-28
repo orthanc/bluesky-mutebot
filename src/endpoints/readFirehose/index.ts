@@ -45,7 +45,8 @@ const processBatch = async (
           createdAt: post.record.createdAt,
           author: post.author,
           type: 'repost',
-          resolvedStatus: 'UNRESOLVED',
+          resolvedStatus: 'RESOLVED',
+          // resolvedStatus: 'UNRESOLVED',
           expiresAt,
           // @ts-expect-error
           repostedPostUri: post.record.subject.uri,

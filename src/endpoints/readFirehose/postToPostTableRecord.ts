@@ -71,7 +71,8 @@ export const postToPostTableRecord = (
     expiresAt,
     ...(isReply
       ? {
-          resolvedStatus: 'UNRESOLVED',
+          resolvedStatus: 'RESOLVED',
+          // resolvedStatus: 'UNRESOLVED',
           isReply,
           ...buildReplyDetails(post),
         }
