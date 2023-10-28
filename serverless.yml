@@ -53,6 +53,7 @@ custom:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
   followingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
+  betaFollowingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/beta-following-feed-url}
   ssmEnvironmentBaseArn: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/bluesky-feeds/${self:provider.stage}'
   enablePolling:
     development: false
@@ -171,6 +172,7 @@ functions:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
     environment:
       FOLLOWING_FEED_URL: ${self:custom.followingFeedUrl}
+      BETA_FOLLOWING_FEED_URL: ${self:custom.betaFollowingFeedUrl}
       EXTERNAL_RESOLVE_QUEUE_URL: !Ref ExternalResolveQueue
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:

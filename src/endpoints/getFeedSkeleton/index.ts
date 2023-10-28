@@ -146,7 +146,7 @@ const resolvePosts = async (
   return loadedPosts;
 };
 
-const filterFeedContentNext = async (
+const filterFeedContentBeta = async (
   feedContent: {
     cursor?: string;
     posts: Array<PostTableRecord>;
@@ -288,7 +288,10 @@ export const rawHandler = async (
   }
   console.log({ requesterDid, cursor, feed, limit });
 
-  if (feed !== process.env.FOLLOWING_FEED_URL) {
+  if (
+    feed !== process.env.FOLLOWING_FEED_URL &&
+    feed !== process.env.BETA_FOLLOWING_FEED_URL
+  ) {
     console.log(`Unknown Feed ${feed}`);
     return {
       statusCode: 404,
@@ -325,11 +328,10 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await filterFeedContent(
-    feedContent,
-    following,
-    muteWords
-  );
+  const filteredFeedContent = await (feed ===
+  process.env.BETA_FOLLOWING_FEED_URL
+    ? filterFeedContentBeta(feedContent, following, muteWords)
+    : filterFeedContent(feedContent, following, muteWords));
   return {
     statusCode: 200,
     body: JSON.stringify({
