@@ -24,7 +24,7 @@ provider:
 
 
 custom:
-  logRetentionInDays: 90
+  logRetentionInDays: 3
   prune:
     automatic: true
     number: 3
