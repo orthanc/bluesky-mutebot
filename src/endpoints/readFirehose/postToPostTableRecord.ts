@@ -1,14 +1,21 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 import { CreateOp } from './firehoseSubscription/subscribe';
 import type { Record as PostRecord } from '@atproto/api/dist/client/types/app/bsky/feed/post';
-import { PostTableRecord } from '../../postsStore';
+import type { Main as ImageEmbed } from '@atproto/api/dist/client/types/app/bsky/embed/images';
+import type { Main as ExternalEmbed } from '@atproto/api/dist/client/types/app/bsky/embed/external';
+import type { Main as RecordEmbed } from '@atproto/api/dist/client/types/app/bsky/embed/record';
+import type { Main as RecordWithMediaEmbed } from '@atproto/api/dist/client/types/app/bsky/embed/recordWithMedia';
+import { PostEntry, PostTableRecord } from '../../postsStore';
 
-type ReplyDetails = {
-  replyRootUri?: string;
-  replyRootAuthorDid?: string;
-  replyParentUri?: string;
-  replyParentAuthorDid?: string;
-};
+type ReplyDetails = Pick<
+  PostEntry,
+  | 'replyRootUri'
+  | 'replyRootAuthorDid'
+  | 'replyParentUri'
+  | 'replyParentAuthorDid'
+>;
+
+const getAuthorFromPostUri = (postUri: string) => postUri.split('/')[2];
 
 const buildReplyDetails = (
   post: Pick<CreateOp<PostRecord>, 'record' | 'uri' | 'author'>
@@ -16,18 +23,27 @@ const buildReplyDetails = (
   const replyDetails: ReplyDetails = {};
   const replyRootUri = post.record.reply?.root?.uri;
   if (replyRootUri != null) {
-    const replyRootAuthorDid = replyRootUri.split('/')[2];
     replyDetails.replyRootUri = replyRootUri;
-    replyDetails.replyRootAuthorDid = replyRootAuthorDid;
+    replyDetails.replyRootAuthorDid = getAuthorFromPostUri(replyRootUri);
   }
   const replyParentUri = post.record.reply?.parent?.uri;
   if (replyParentUri != null) {
-    const replyParentAuthorDid = replyParentUri.split('/')[2];
     replyDetails.replyParentUri = replyParentUri;
-    replyDetails.replyParentAuthorDid = replyParentAuthorDid;
+    replyDetails.replyParentAuthorDid = getAuthorFromPostUri(replyParentUri);
   }
   return replyDetails;
 };
+
+const isImageEmbed = (embed: PostRecord['embed']): embed is ImageEmbed =>
+  embed != null && embed['$type'] === 'app.bsky.embed.images';
+const isExternalEmbed = (embed: PostRecord['embed']): embed is ExternalEmbed =>
+  embed != null && embed['$type'] === 'app.bsky.embed.external';
+const isRecordEmbed = (embed: PostRecord['embed']): embed is RecordEmbed =>
+  embed != null && embed['$type'] === 'app.bsky.embed.record';
+const isRecordWithMediaEmbed = (
+  embed: PostRecord['embed']
+): embed is RecordWithMediaEmbed =>
+  embed != null && embed['$type'] === 'app.bsky.embed.recordWithMedia';
 
 export const postToPostTableRecord = (
   post: Pick<CreateOp<PostRecord>, 'record' | 'uri' | 'author'>,
@@ -35,16 +51,45 @@ export const postToPostTableRecord = (
   followedBy: Record<string, true>
 ): PostTableRecord & { type: 'post' } => {
   const textEntries: Array<string> = [];
+  let quoteDetails:
+    | Pick<PostEntry, 'quotedPostUri' | 'quotedPostAuthorDid'>
+    | undefined = undefined;
   if (post.record.text != null) {
     textEntries.push(post.record.text as string);
   }
-  if (post.record.embed?.images != null) {
-    // @ts-expect-error
-    post.record.embed.images.forEach((image) => {
+  const embed = post.record.embed;
+  if (isImageEmbed(embed)) {
+    embed.images.forEach((image) => {
       if (image.alt) {
         textEntries.push(image.alt);
       }
     });
+  }
+  if (isExternalEmbed(embed)) {
+    textEntries.push(embed.external.description);
+  }
+  if (isRecordEmbed(embed)) {
+    quoteDetails = {
+      quotedPostUri: embed.record.uri,
+      quotedPostAuthorDid: getAuthorFromPostUri(embed.record.uri),
+    };
+  }
+  if (isRecordWithMediaEmbed(embed)) {
+    quoteDetails = {
+      quotedPostUri: embed.record.record.uri,
+      quotedPostAuthorDid: getAuthorFromPostUri(embed.record.record.uri),
+    };
+    const media = embed.media;
+    if (isImageEmbed(media)) {
+      media.images.forEach((image) => {
+        if (image.alt) {
+          textEntries.push(image.alt);
+        }
+      });
+    }
+    if (isExternalEmbed(media)) {
+      textEntries.push(media.external.description);
+    }
   }
   const isReply = post.record.reply != null;
   let startsWithMention = false;
@@ -69,6 +114,7 @@ export const postToPostTableRecord = (
     author: post.author,
     type: 'post',
     expiresAt,
+    ...quoteDetails,
     ...(isReply
       ? {
           resolvedStatus: 'RESOLVED',

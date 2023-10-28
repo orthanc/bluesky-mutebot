@@ -16,6 +16,25 @@ const queue = new PQueue({ concurrency: 3 });
 
 export const POST_RETENTION_SECONDS = 24 * 3600;
 
+export type PostEntry = {
+  type: 'post';
+  uri: string;
+  createdAt: string;
+  author: string;
+  isReply?: true;
+  replyRootUri?: string;
+  replyRootAuthorDid?: string;
+  replyRootTextEntries?: Array<string>;
+  replyParentUri?: string;
+  replyParentAuthorDid?: string;
+  replyParentTextEntries?: Array<string>;
+  quotedPostUri?: string;
+  quotedPostAuthorDid?: string;
+  startsWithMention?: true;
+  mentionedDids: Array<string>;
+  textEntries: Array<string>;
+};
+
 export type PostTableRecord = {
   uri: string;
   createdAt: string;
@@ -24,25 +43,7 @@ export type PostTableRecord = {
   expiresAt: number;
   followedBy?: Record<string, true>;
   externallyResolved?: boolean;
-} & (
-  | {
-      type: 'post';
-      uri: string;
-      createdAt: string;
-      author: string;
-      isReply?: true;
-      replyRootUri?: string;
-      replyRootAuthorDid?: string;
-      replyRootTextEntries?: Array<string>;
-      replyParentUri?: string;
-      replyParentAuthorDid?: string;
-      replyParentTextEntries?: Array<string>;
-      startsWithMention?: true;
-      mentionedDids: Array<string>;
-      textEntries: Array<string>;
-    }
-  | { type: 'repost'; repostedPostUri: string }
-);
+} & (PostEntry | { type: 'repost'; repostedPostUri: string });
 
 export type FeedEntry = Pick<
   PostTableRecord,
