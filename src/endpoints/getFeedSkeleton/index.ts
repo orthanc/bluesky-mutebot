@@ -28,87 +28,6 @@ const SYNCING_FOLLOING_POST =
 const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 
-const filterFeedContent = async (
-  feedContent: {
-    cursor?: string;
-    posts: Array<PostTableRecord>;
-  },
-  following: FollowingRecord,
-  muteWords: Array<string>
-): Promise<Array<FeedEntry>> => {
-  const loadedPosts: Record<string, PostTableRecord> = {};
-  const postUris = new Set<string>();
-  feedContent.posts.forEach((post) => {
-    if (post.type === 'post') {
-      loadedPosts[post.uri] = post;
-    } else {
-      postUris.add(post.repostedPostUri);
-    }
-  });
-  const loadedReposts = await getPosts(Array.from(postUris));
-  Object.assign(loadedPosts, loadedReposts);
-
-  const followingDids = new Set<string>();
-  Object.keys(following.following).forEach((did) => followingDids.add(did));
-  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
-    (postRef) => {
-      const post =
-        loadedPosts[
-          postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
-        ];
-      // exclude posts we can't find
-      if (post == null) return false;
-      // should never happen, but for typing, if we get back a repost skip it
-      if (post.type === 'repost') return false;
-      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-      if (
-        post.startsWithMention &&
-        !post.mentionedDids.some((mentionedDid) =>
-          followingDids.has(mentionedDid)
-        )
-      )
-        return false;
-      // exclude replies that are to a non followed
-      if (
-        post.isReply &&
-        (post.replyParentAuthorDid == null ||
-          !followingDids.has(post.replyParentAuthorDid))
-      )
-        return false;
-      // Exclude posts with muted words
-      if (
-        post.textEntries.some((postText) => {
-          const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
-        })
-      )
-        return false;
-      // Exclude replies to posts with muted words
-      if (
-        post.isReply &&
-        (post.replyParentTextEntries == null ||
-          post.replyParentTextEntries.some((postText) => {
-            const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
-          }))
-      )
-        return false;
-      return true;
-    }
-  );
-  if (feedContent.cursor == null) {
-    filteredFeedContent.push({
-      uri: NO_MORE_POSTS_POST,
-      type: 'post',
-    } as FeedEntry);
-  }
-  return filteredFeedContent;
-};
-
 const resolvePosts = async (
   postUris: Array<string>
 ): Promise<Record<string, PostTableRecord>> => {
@@ -136,14 +55,150 @@ const resolvePosts = async (
     });
     batch.forEach(({ uri, resolveMore }) => {
       const post = loadedPosts[uri];
-      const replyParentUri =
-        post != null && post.type === 'post' ? post.replyParentUri : undefined;
-      if (resolveMore && replyParentUri != null) {
-        toResolve.push({ uri: replyParentUri, resolveMore: false });
+      if (resolveMore && post != null && post.type === 'post') {
+        if (resolveMore && post.replyParentUri != null) {
+          toResolve.push({ uri: post.replyParentUri, resolveMore: false });
+        }
+        if (resolveMore && post.quotedPostUri != null) {
+          toResolve.push({ uri: post.quotedPostUri, resolveMore: false });
+        }
       }
     });
   }
   return loadedPosts;
+};
+
+const filterFeedContent = async (
+  feedContent: {
+    cursor?: string;
+    posts: Array<PostTableRecord>;
+  },
+  following: FollowingRecord,
+  muteWords: Array<string>
+): Promise<Array<FeedEntry>> => {
+  const followingDids = new Set<string>();
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
+  const loadedPosts: Record<string, PostTableRecord> = {};
+  const postUris = new Set<string>();
+  feedContent.posts.forEach((post) => {
+    if (post.type === 'post') {
+      loadedPosts[post.uri] = post;
+    } else {
+      postUris.add(post.repostedPostUri);
+    }
+  });
+  feedContent.posts.forEach((post) => {
+    if (post.type === 'post') {
+      // If it is a reply to a post we don't already have
+      if (
+        post.replyParentUri != null &&
+        loadedPosts[post.replyParentUri] == null
+      ) {
+        // And it is a reply to someone followed (otherwise it would be filtered out anyway)
+        if (
+          post.replyParentAuthorDid != null &&
+          followingDids.has(post.replyParentAuthorDid)
+        ) {
+          postUris.add(post.replyParentUri);
+        }
+      }
+
+      // If it's a quote of a post we don't already have
+      if (
+        post.quotedPostUri != null &&
+        loadedPosts[post.quotedPostUri] == null
+      ) {
+        postUris.add(post.quotedPostUri);
+      }
+    }
+  });
+  const loadedReferencedPosts = await getPosts(Array.from(postUris));
+  Object.assign(loadedPosts, loadedReferencedPosts);
+  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
+  if (postUris.size > 0) {
+    const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
+    Object.assign(loadedPosts, externallyResolvedPosts);
+  }
+  console.log({
+    feedPosts: feedContent.posts.length,
+    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
+    externallyResolvedPosts: postUris.size,
+    totalPosts: Object.keys(loadedPosts).length,
+  });
+
+  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
+    (postRef) => {
+      const post =
+        loadedPosts[
+          postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+        ];
+      // exclude posts we can't find
+      if (post == null) return false;
+      // should never happen, but for typing, if we get back a repost skip it
+      if (post.type === 'repost') return false;
+
+      // Exclude posts with muted words
+      if (
+        post.textEntries.some((postText) => {
+          const lowerText = postText.toLowerCase();
+          return muteWords.some((mutedWord) =>
+            lowerText.includes(mutedWord.trim())
+          );
+        })
+      )
+        return false;
+      // Exclude replies to posts with muted words
+      for (const referencedPostUri of [
+        post.replyParentUri,
+        post.quotedPostUri,
+      ]) {
+        if (referencedPostUri == null) continue;
+        const referencedPost = loadedPosts[referencedPostUri];
+        // Err on the side of caution, skip replies and quotes of posts we can't find
+        if (referencedPost == null || referencedPost.type !== 'post')
+          return false;
+
+        // Don't return quotes or replies to posts with muted words
+        if (
+          referencedPost.textEntries.some((postText) => {
+            const lowerText = postText.toLowerCase();
+            return muteWords.some((mutedWord) =>
+              lowerText.includes(mutedWord.trim())
+            );
+          })
+        )
+          return false;
+      }
+
+      // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
+      // to be shared wider
+      if (postRef.type !== 'repost') {
+        // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+        if (
+          post.startsWithMention &&
+          !post.mentionedDids.some((mentionedDid) =>
+            followingDids.has(mentionedDid)
+          )
+        )
+          return false;
+        // exclude replies that are to a non followed
+        if (
+          post.isReply &&
+          (post.replyParentAuthorDid == null ||
+            !followingDids.has(post.replyParentAuthorDid))
+        )
+          return false;
+      }
+      return true;
+    }
+  );
+  if (feedContent.cursor == null) {
+    filteredFeedContent.push({
+      uri: NO_MORE_POSTS_POST,
+      type: 'post',
+    } as FeedEntry);
+  }
+  return filteredFeedContent;
 };
 
 const filterFeedContentBeta = async (
@@ -180,14 +235,17 @@ const filterFeedContentBeta = async (
           postUris.add(post.replyParentUri);
         }
       }
+
+      // If it's a quote of a post we don't already have
+      if (
+        post.quotedPostUri != null &&
+        loadedPosts[post.quotedPostUri] == null
+      ) {
+        postUris.add(post.quotedPostUri);
+      }
     }
   });
   const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  // const loadedReferencedPosts = Object.fromEntries(
-  //   Object.entries(rawLoadedReferencedPosts).filter(
-  //     ([, post]) => !post.externallyResolved
-  //   )
-  // );
   Object.assign(loadedPosts, loadedReferencedPosts);
   Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
@@ -211,21 +269,7 @@ const filterFeedContentBeta = async (
       if (post == null) return false;
       // should never happen, but for typing, if we get back a repost skip it
       if (post.type === 'repost') return false;
-      // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-      if (
-        post.startsWithMention &&
-        !post.mentionedDids.some((mentionedDid) =>
-          followingDids.has(mentionedDid)
-        )
-      )
-        return false;
-      // exclude replies that are to a non followed
-      if (
-        post.isReply &&
-        (post.replyParentAuthorDid == null ||
-          !followingDids.has(post.replyParentAuthorDid))
-      )
-        return false;
+
       // Exclude posts with muted words
       if (
         post.textEntries.some((postText) => {
@@ -237,22 +281,47 @@ const filterFeedContentBeta = async (
       )
         return false;
       // Exclude replies to posts with muted words
-      const parentPost =
-        post.replyParentUri != null
-          ? loadedPosts[post.replyParentUri]
-          : undefined;
-      if (
-        post.isReply &&
-        (parentPost == null ||
-          parentPost.type !== 'post' ||
-          parentPost.textEntries.some((postText) => {
+      for (const referencedPostUri of [
+        post.replyParentUri,
+        post.quotedPostUri,
+      ]) {
+        if (referencedPostUri == null) continue;
+        const referencedPost = loadedPosts[referencedPostUri];
+        // Err on the side of caution, skip replies and quotes of posts we can't find
+        if (referencedPost == null || referencedPost.type !== 'post')
+          return false;
+
+        // Don't return quotes or replies to posts with muted words
+        if (
+          referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
             return muteWords.some((mutedWord) =>
               lowerText.includes(mutedWord.trim())
             );
-          }))
-      )
-        return false;
+          })
+        )
+          return false;
+      }
+
+      // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
+      // to be shared wider
+      if (postRef.type !== 'repost') {
+        // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+        if (
+          post.startsWithMention &&
+          !post.mentionedDids.some((mentionedDid) =>
+            followingDids.has(mentionedDid)
+          )
+        )
+          return false;
+        // exclude replies that are to a non followed
+        if (
+          post.isReply &&
+          (post.replyParentAuthorDid == null ||
+            !followingDids.has(post.replyParentAuthorDid))
+        )
+          return false;
+      }
       return true;
     }
   );
@@ -332,7 +401,7 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await (feed !==
+  const filteredFeedContent = await (feed ===
   process.env.BETA_FOLLOWING_FEED_URL
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
