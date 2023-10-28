@@ -3,6 +3,32 @@ import { CreateOp } from './firehoseSubscription/subscribe';
 import type { Record as PostRecord } from '@atproto/api/dist/client/types/app/bsky/feed/post';
 import { PostTableRecord } from '../../postsStore';
 
+type ReplyDetails = {
+  replyRootUri?: string;
+  replyRootAuthorDid?: string;
+  replyParentUri?: string;
+  replyParentAuthorDid?: string;
+};
+
+const buildReplyDetails = (
+  post: Pick<CreateOp<PostRecord>, 'record' | 'uri' | 'author'>
+): ReplyDetails => {
+  const replyDetails: ReplyDetails = {};
+  const replyRootUri = post.record.reply?.root?.uri;
+  if (replyRootUri != null) {
+    const replyRootAuthorDid = replyRootUri.split('/')[2];
+    replyDetails.replyRootUri = replyRootUri;
+    replyDetails.replyRootAuthorDid = replyRootAuthorDid;
+  }
+  const replyParentUri = post.record.reply?.parent?.uri;
+  if (replyParentUri != null) {
+    const replyParentAuthorDid = replyParentUri.split('/')[2];
+    replyDetails.replyParentUri = replyParentUri;
+    replyDetails.replyParentAuthorDid = replyParentAuthorDid;
+  }
+  return replyDetails;
+};
+
 export const postToPostTableRecord = (
   post: Pick<CreateOp<PostRecord>, 'record' | 'uri' | 'author'>,
   expiresAt: number,
@@ -47,8 +73,7 @@ export const postToPostTableRecord = (
       ? {
           resolvedStatus: 'UNRESOLVED',
           isReply,
-          replyRootUri: post.record.reply?.root?.uri,
-          replyParentUri: post.record.reply?.parent?.uri,
+          ...buildReplyDetails(post),
         }
       : { resolvedStatus: 'RESOLVED' }),
     ...(startsWithMention ? { startsWithMention } : undefined),
