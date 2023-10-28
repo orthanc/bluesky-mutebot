@@ -250,6 +250,44 @@ const filterFeedContentBeta = async (
       if (post == null) return false;
       // should never happen, but for typing, if we get back a repost skip it
       if (post.type === 'repost') return false;
+
+      // Exclude posts with muted words
+      if (
+        post.textEntries.some((postText) => {
+          const lowerText = postText.toLowerCase();
+          return muteWords.some((mutedWord) =>
+            lowerText.includes(mutedWord.trim())
+          );
+        })
+      )
+        return false;
+      // Exclude replies to posts with muted words
+      for (const referencedPostUri of [
+        post.replyParentUri,
+        post.quotedPostUri,
+      ]) {
+        if (referencedPostUri == null) continue;
+        const referencedPost = loadedPosts[referencedPostUri];
+        // Err on the side of caution, skip replies and quotes of posts we can't find
+        if (referencedPost == null || referencedPost.type !== 'post')
+          return false;
+
+        // Don't return quotes or replies to posts with muted words
+        if (
+          referencedPost.textEntries.some((postText) => {
+            const lowerText = postText.toLowerCase();
+            return muteWords.some((mutedWord) =>
+              lowerText.includes(mutedWord.trim())
+            );
+          })
+        )
+          return false;
+      }
+
+      // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
+      // to be shared wider
+      if (postRef.type === 'repost') return true;
+
       // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
       if (
         post.startsWithMention &&
@@ -263,33 +301,6 @@ const filterFeedContentBeta = async (
         post.isReply &&
         (post.replyParentAuthorDid == null ||
           !followingDids.has(post.replyParentAuthorDid))
-      )
-        return false;
-      // Exclude posts with muted words
-      if (
-        post.textEntries.some((postText) => {
-          const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
-        })
-      )
-        return false;
-      // Exclude replies to posts with muted words
-      const parentPost =
-        post.replyParentUri != null
-          ? loadedPosts[post.replyParentUri]
-          : undefined;
-      if (
-        post.isReply &&
-        (parentPost == null ||
-          parentPost.type !== 'post' ||
-          parentPost.textEntries.some((postText) => {
-            const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
-          }))
       )
         return false;
       return true;
