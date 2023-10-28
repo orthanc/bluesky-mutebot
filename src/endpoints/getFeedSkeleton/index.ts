@@ -182,12 +182,12 @@ const filterFeedContentBeta = async (
       }
     }
   });
-  const rawLoadedReferencedPosts = await getPosts(Array.from(postUris));
-  const loadedReferencedPosts = Object.fromEntries(
-    Object.entries(rawLoadedReferencedPosts).filter(
-      ([, post]) => !post.externallyResolved
-    )
-  );
+  const loadedReferencedPosts = await getPosts(Array.from(postUris));
+  // const loadedReferencedPosts = Object.fromEntries(
+  //   Object.entries(rawLoadedReferencedPosts).filter(
+  //     ([, post]) => !post.externallyResolved
+  //   )
+  // );
   Object.assign(loadedPosts, loadedReferencedPosts);
   Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
@@ -332,7 +332,7 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await (feed ===
+  const filteredFeedContent = await (feed !==
   process.env.BETA_FOLLOWING_FEED_URL
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
