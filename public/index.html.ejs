@@ -8,20 +8,32 @@
     <script src="/htmx-ext-ws-1.9.6.js"></script>
   </head>
   <body>
-    <div hx-ext="ws" ws-connect="wss://<%= process.env.WEBSOCKET_DOMAIN %>">
-      <div id="content">
-        <form id="form" ws-send hx-trigger="submit throttle:30s">
-            <input type="submit" name="authorize" value="Login"/>
-        </form>
-      </div>
+    <div id="content">
+      <form hx-post="https://<%= process.env.API_DOMAIN %>/console/session" hx-swap="outerHTML" hx-trigger="submit throttle:30s" hx-target="#content">
+        <input type="submit" name="authorize" value="Login"/>
+      </form>
+    </div>
+      <div hx-ext="ws" ws-connect="wss://<%= process.env.WEBSOCKET_DOMAIN %>">
       <div>
-        <form id="ping-form" ws-send hx-trigger="ws-keep-alive">
+        <form id="ping-form" ws-send hx-trigger="mutebot:ping from:body">
           <input type="hidden" name="ping" value="true"/>
         </form>
       </div>
-    </div>
     <script>
-      setInterval(() => document.getElementById('ping-form').dispatchEvent(new Event('ws-keep-alive')), 120000)
+      (function () {
+        let authToken = undefined;
+        document.body.addEventListener('mutebot:auth-token-issued', (e) => {
+          authToken = e.detail.value;
+        })
+        const addAuthToken = (e) => {
+          if (authToken != null) {
+            e.detail.headers['Authorization'] = `Bearer ${authToken}`;
+          }
+        };
+        document.body.addEventListener('htmx:configRequest', addAuthToken);
+        document.body.addEventListener('htmx:wsConfigSend', addAuthToken);
+        setInterval(() => document.body.dispatchEvent(new Event('mutebot:ping')), 10000)
+      })();
     </script>
   </body>
 </html>

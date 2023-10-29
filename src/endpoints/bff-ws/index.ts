@@ -57,7 +57,7 @@ export const handler = async (
           }),
           'Access-Control-Expose-Headers': 'HX-Trigger',
         },
-        body: renderEstablishingSession(),
+        body: renderEstablishingSession(false),
       };
     }
   }
@@ -71,7 +71,7 @@ export const handler = async (
     await client.send(
       new PostToConnectionCommand({
         // PostToConnectionRequest
-        Data: renderEstablishingSession(),
+        Data: renderEstablishingSession(true),
         ConnectionId: connectionId,
       })
     );

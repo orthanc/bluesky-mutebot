@@ -2,7 +2,12 @@ import { render } from 'preact-render-to-string';
 import { Content } from './Content';
 
 export const EstablishingSession = () => {
-  return <Content>Establishing Session.....</Content>;
+  return <>Establishing Session.....</>;
 };
 
-export const renderEstablishingSession = () => render(<EstablishingSession />);
+export const renderEstablishingSession = (oob: boolean) =>
+  render(
+    <Content oob={oob}>
+      <EstablishingSession />
+    </Content>
+  );

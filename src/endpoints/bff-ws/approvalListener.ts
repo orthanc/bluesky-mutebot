@@ -53,6 +53,7 @@ export const rawHandler = async (
   console.log(event);
 
   const connectionId = event.connectionId;
+  if (connectionId == null) return;
 
   const [approvalPost, agent] = await Promise.all([
     getApprovalPost(connectionId, context.getRemainingTimeInMillis() - 5000),

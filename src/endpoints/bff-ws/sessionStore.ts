@@ -59,6 +59,7 @@ export const createSession = async (
   const session: SessionRecord = {
     sessionId,
     authKey,
+    ...(connectionId == null ? undefined : { connectionId }),
     status: 'pending',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
   };

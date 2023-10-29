@@ -1,5 +1,8 @@
-export const Content: preact.FunctionalComponent = ({ children }) => (
-  <div id="content" hx-swap-oob="true">
+export const Content: preact.FunctionalComponent<{ oob?: boolean }> = ({
+  children,
+  oob = true,
+}) => (
+  <div id="content" {...(oob ? { 'hx-swap-oob': 'true' } : {})}>
     {children}
   </div>
 );
