@@ -10,11 +10,12 @@ import base64url from 'base64url';
 
 type BaseSessionRecord = {
   sessionId: string;
-  connectionId: string;
+  connectionId?: string;
   expiresAt: number;
 };
 export type PendingSessionRecord = BaseSessionRecord & {
   status: 'pending';
+  authKey: string;
 };
 export type AuthorizedSessionRecord = BaseSessionRecord & {
   status: 'authorized';
@@ -39,13 +40,16 @@ export const createAuthKey = async (): Promise<string> => {
 };
 
 export const createSession = async (
-  connectionId: string
+  connectionId?: string
 ): Promise<SessionRecord> => {
-  const randomResult = await kmsClient.send(
-    new GenerateRandomCommand({
-      NumberOfBytes: 32,
-    })
-  );
+  const [randomResult, authKey] = await Promise.all([
+    kmsClient.send(
+      new GenerateRandomCommand({
+        NumberOfBytes: 32,
+      })
+    ),
+    createAuthKey(),
+  ]);
 
   if (randomResult.Plaintext == null)
     throw new Error('Unable to generate session id');
@@ -54,7 +58,7 @@ export const createSession = async (
   const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
   const session: SessionRecord = {
     sessionId,
-    connectionId,
+    authKey,
     status: 'pending',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
   };

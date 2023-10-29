@@ -68,12 +68,14 @@ plugins:
   - serverless-iam-roles-per-function
   - serverless-prune-plugin
   - serverless-plugin-log-retention
+  - serverless-offline
 
 functions:
   bff-ws:
     handler: ./src/endpoints/bff-ws/index.handler
     events:
       - websocket: $default
+      - httpApi: POST /console/session
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -101,6 +103,12 @@ functions:
         Action:
           - kms:GenerateRandom
         Resource: '*'
+      - Effect: 'Allow'
+        Action:
+          - ssm:GetParameter
+        Resource:
+          - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/current
+          - ${self:custom.ssmEnvironmentBaseArn}/resume-token-signing-key/current
 
   bff-approval-listener:
     handler: ./src/endpoints/bff-ws/approvalListener.handler

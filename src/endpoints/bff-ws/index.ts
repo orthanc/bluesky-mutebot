@@ -16,6 +16,7 @@ import {
 } from '../../muteWordsStore';
 import { renderMuteWords } from './components/MuteWords.';
 import { renderEstablishingSession } from './components/EstablishingSession';
+import { generateAuthToken } from '../../authTokens';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
@@ -39,6 +40,27 @@ const sendMuteWords = async (
 export const handler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
+  switch (event.routeKey) {
+    case 'POST /console/session': {
+      const session = await createSession();
+      const authToken = await generateAuthToken(
+        'access-token-signing-key',
+        session.sessionId,
+        '15 minutes'
+      );
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'text/html',
+          'HX-Trigger': JSON.stringify({
+            'mutebot:auth-token-issued': authToken,
+          }),
+          'Access-Control-Expose-Headers': 'HX-Trigger',
+        },
+        body: renderEstablishingSession(),
+      };
+    }
+  }
   const { connectionId } = event.requestContext as { connectionId?: string };
   if (connectionId == null) {
     throw new Error('Bad Request, no connection id');

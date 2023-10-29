@@ -5,6 +5,7 @@ const ssmClient = new SSMClient({ region: 'us-west-2' });
 
 const variables = {
   CONTENT_BUCKET: 'content-bucket',
+  API_DOMAIN: `/bluesky-feeds/${process.env.TARGET_STAGE}/domain-name`,
   WEBSOCKET_DOMAIN: `/bluesky-feeds/${process.env.TARGET_STAGE}/console/ws-domain-name`,
 };
 
