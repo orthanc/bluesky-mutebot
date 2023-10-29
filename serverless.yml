@@ -9,9 +9,27 @@ provider:
   memorySize: 1024
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
+  httpApi:
+    cors:
+      allowedHeaders:
+        - authorization
+        - content-type
+        - x-amz-date
+        - x-amz-security-token
+        - x-amz-user-agent
+        - x-amzn-trace-id
+        - x-api-key
+        - hx-current-url
+        - hx-request
+        - hx-target
+      exposedResponseHeaders:
+        - hx-trigger
+        - hx-trigger-after-settle
+
   environment:
     DEPLOY_STAGE: ${self:provider.stage}
     PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
+    WEBSOCKET_HOSTNAME: ${self:custom.customDomain.websocket.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     FOLLOWED_BY_COUNT_TABLE: ${self:custom.followedByCountTable}
@@ -76,6 +94,7 @@ functions:
     events:
       - websocket: $default
       - httpApi: POST /console/session
+      - httpApi: POST /console/session/poll-authorised
     iamRoleStatements:
       - Effect: Allow
         Action:
@@ -85,6 +104,8 @@ functions:
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
         Resource:
           - !GetAtt ConsoleSessionsTable.Arn
       - Effect: "Allow"
@@ -109,6 +130,10 @@ functions:
         Resource:
           - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/current
           - ${self:custom.ssmEnvironmentBaseArn}/resume-token-signing-key/current
+      - Effect: 'Allow'
+        Action:
+          - ssm:GetParametersByPath
+        Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
 
   bff-approval-listener:
     handler: ./src/endpoints/bff-ws/approvalListener.handler
@@ -133,10 +158,7 @@ functions:
           - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
       - Effect: "Allow"
         Action:
-          - kms:GenerateRandom
-        Resource: '*'
-      - Effect: "Allow"
-        Action:
+          - dynamodb:GetItem
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt ConsoleSessionsTable.Arn

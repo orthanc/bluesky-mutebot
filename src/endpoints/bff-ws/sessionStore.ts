@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
+  GetCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
@@ -11,11 +12,11 @@ import base64url from 'base64url';
 type BaseSessionRecord = {
   sessionId: string;
   connectionId?: string;
+  authKey: string;
   expiresAt: number;
 };
 export type PendingSessionRecord = BaseSessionRecord & {
   status: 'pending';
-  authKey: string;
 };
 export type AuthorizedSessionRecord = BaseSessionRecord & {
   status: 'authorized';
@@ -66,13 +67,29 @@ export const createSession = async (
   await ddbDocClient.send(
     new PutCommand({
       TableName,
-      Item: {
-        sessionId,
-        connectionId,
-      },
+      Item: session,
     })
   );
   return session;
+};
+
+export const updateSessionConnectionId = async (
+  sessionId: string,
+  connectionId: string
+) => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName,
+      Key: {
+        sessionId,
+      },
+      UpdateExpression: 'SET connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId,
+      },
+    })
+  );
 };
 
 export const authorizeSession = async (
@@ -102,9 +119,23 @@ export const authorizeSession = async (
   );
 };
 
+export const getSessionBySessionId = async (
+  sessionId: string
+): Promise<SessionRecord | undefined> => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  const result = await ddbDocClient.send(
+    new GetCommand({
+      TableName,
+      Key: { sessionId },
+    })
+  );
+  if (result.Item == null) return undefined;
+  return result.Item as SessionRecord;
+};
+
 export const getSessionByConnectionId = async (
   connectionId: string
-): Promise<AuthorizedSessionRecord | undefined> => {
+): Promise<SessionRecord | undefined> => {
   const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
   const result = await ddbDocClient.send(
     new QueryCommand({
@@ -118,5 +149,5 @@ export const getSessionByConnectionId = async (
     })
   );
   if (result.Items == null || result.Items.length === 0) return undefined;
-  return result.Items[0] as AuthorizedSessionRecord;
+  return result.Items[0] as SessionRecord;
 };

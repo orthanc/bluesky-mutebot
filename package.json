@@ -46,6 +46,8 @@
     "@aws-sdk/lib-dynamodb": "^3.418.0",
     "@aws-sdk/util-dynamodb": "^3.418.0",
     "@middy/core": "^4.6.4",
+    "@middy/http-cors": "^4.6.5",
+    "@middy/http-error-handler": "^4.6.5",
     "@middy/http-header-normalizer": "^4.6.4",
     "base64url": "^3.0.1",
     "http-errors": "^2.0.0",

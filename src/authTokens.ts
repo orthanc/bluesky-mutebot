@@ -1,8 +1,12 @@
-import { SSM } from 'aws-sdk';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import base64url from 'base64url';
 import httpErrors from 'http-errors';
+import {
+  GetParameterCommand,
+  GetParametersByPathCommand,
+  SSMClient,
+} from '@aws-sdk/client-ssm';
 
 const deployStage = process.env.DEPLOY_STAGE ?? '';
 const tokenIssuer = `login-${deployStage}`;
@@ -16,18 +20,20 @@ export type JwkKey = {
   k: string;
 };
 
+const ssmClient = new SSMClient({});
+
 export const generateAuthToken = async (
   keyName: string,
   sessionId: string,
   expiresIn: string
 ): Promise<string> => {
   const tokenAudience = `${keyName.split('-')[0]}-${deployStage}`;
-  const parameter = await new SSM()
-    .getParameter({
+  const parameter = await ssmClient.send(
+    new GetParameterCommand({
       Name: `/bluesky-feeds/${deployStage}/${keyName}/current`,
       WithDecryption: true,
     })
-    .promise();
+  );
 
   if (parameter.Parameter == null || parameter.Parameter.Value == null) {
     console.error(
@@ -50,23 +56,17 @@ export const generateAuthToken = async (
   });
 };
 
-export interface AuthenticatedUser {
-  twitterUserId: string;
-  twitterScreenName: string;
-  admin?: boolean;
-}
-
 export const validateAuthToken = async (
   keyName: string,
   authToken: string
-): Promise<AuthenticatedUser & { expiresAt: number }> => {
+): Promise<{ sessionId: string; expiresAt: number }> => {
   const tokenAudience = `${keyName.split('-')[0]}-${deployStage}`;
-  const parametersResult = await new SSM()
-    .getParametersByPath({
+  const parametersResult = await ssmClient.send(
+    new GetParametersByPathCommand({
       Path: `/bluesky-feeds/${deployStage}/${keyName}/`,
       WithDecryption: true,
     })
-    .promise();
+  );
 
   const keys = (parametersResult.Parameters ?? []).reduce<
     Record<string, JwkKey>
@@ -108,28 +108,19 @@ export const validateAuthToken = async (
   );
 
   if (typeof decodedToken === 'object' && decodedToken != null) {
-    const { sub, screen_name, admin, exp } = decodedToken as {
+    const { sub, exp } = decodedToken as {
       sub?: string;
       screen_name?: string;
       admin?: boolean;
       exp: number;
     };
-    if (
-      sub &&
-      typeof sub === 'string' &&
-      screen_name &&
-      typeof screen_name == 'string'
-    ) {
+    if (typeof sub === 'string') {
       return {
-        twitterUserId: sub,
-        twitterScreenName: screen_name,
-        admin,
+        sessionId: sub,
         expiresAt: exp,
       };
     }
   }
-  console.warn(
-    `Missing subject or screen_name in token ${JSON.stringify(decodedToken)}`
-  );
+  console.warn(`Missing subject in token ${JSON.stringify(decodedToken)}`);
   throw new httpErrors.Unauthorized('Invalid Token');
 };

@@ -7,18 +7,12 @@
     <script src="/htmx-1.9.6.min.js"></script>
     <script src="/htmx-ext-ws-1.9.6.js"></script>
   </head>
-  <body>
+  <body hx-ext="ws">
     <div id="content">
       <form hx-post="https://<%= process.env.API_DOMAIN %>/console/session" hx-swap="outerHTML" hx-trigger="submit throttle:30s" hx-target="#content">
         <input type="submit" name="authorize" value="Login"/>
       </form>
     </div>
-      <div hx-ext="ws" ws-connect="wss://<%= process.env.WEBSOCKET_DOMAIN %>">
-      <div>
-        <form id="ping-form" ws-send hx-trigger="mutebot:ping from:body">
-          <input type="hidden" name="ping" value="true"/>
-        </form>
-      </div>
     <script>
       (function () {
         let authToken = undefined;

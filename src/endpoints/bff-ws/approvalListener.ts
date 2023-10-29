@@ -5,7 +5,11 @@ import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import { SessionRecord, authorizeSession, createAuthKey } from './sessionStore';
+import {
+  SessionRecord,
+  authorizeSession,
+  getSessionBySessionId,
+} from './sessionStore';
 import { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import { OperationsSubscription } from '../readFirehose/firehoseSubscription/subscribe';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
@@ -18,15 +22,19 @@ const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
 });
 
-const getApprovalPost = async (connectionId: string, timeoutMillis: number) => {
-  const authKey = await createAuthKey();
-
-  await client.send(
-    new PostToConnectionCommand({
-      Data: renderBleetToAuthorise(authKey),
-      ConnectionId: connectionId,
-    })
-  );
+const getApprovalPost = async (
+  authKey: string,
+  timeoutMillis: number,
+  connectionId: string | undefined
+) => {
+  if (connectionId != null) {
+    await client.send(
+      new PostToConnectionCommand({
+        Data: renderBleetToAuthorise(authKey),
+        ConnectionId: connectionId,
+      })
+    );
+  }
 
   const serviceUserDid = process.env.BLUESKY_SERVICE_USER_DID as string;
   const authRegex = new RegExp(`let me in ${authKey}`);
@@ -50,14 +58,17 @@ export const rawHandler = async (
   event: SessionRecord,
   context: Context
 ): Promise<void> => {
-  console.log(event);
-
-  const connectionId = event.connectionId;
-  if (connectionId == null) return;
+  const { sessionId } = event;
+  const session = await getSessionBySessionId(sessionId);
+  if (session == null) return;
+  const { authKey, connectionId } = session;
 
   const [approvalPost, agent] = await Promise.all([
-    getApprovalPost(connectionId, context.getRemainingTimeInMillis() - 5000),
-    // { author: 'did:plc:crngjmsdh3zpuhmd5gtgwx6q' },
+    getApprovalPost(
+      authKey,
+      context.getRemainingTimeInMillis() - 5000,
+      connectionId
+    ),
     getBskyAgent(),
   ]);
 
@@ -66,7 +77,7 @@ export const rawHandler = async (
   const [muteWords] = await Promise.all([
     getMuteWords(profile.data.did),
     authorizeSession({
-      sessionId: event.sessionId,
+      sessionId,
       subscriberDid: profile.data.did,
       subscriberHandle: profile.data.handle,
     }),
