@@ -12,7 +12,7 @@ import base64url from 'base64url';
 type BaseSessionRecord = {
   sessionId: string;
   connectionId?: string;
-  authKey: string;
+  authKey?: string;
   expiresAt: number;
 };
 export type PendingSessionRecord = BaseSessionRecord & {
@@ -43,14 +43,11 @@ export const createAuthKey = async (): Promise<string> => {
 export const createSession = async (
   connectionId?: string
 ): Promise<SessionRecord> => {
-  const [randomResult, authKey] = await Promise.all([
-    kmsClient.send(
-      new GenerateRandomCommand({
-        NumberOfBytes: 32,
-      })
-    ),
-    createAuthKey(),
-  ]);
+  const randomResult = await kmsClient.send(
+    new GenerateRandomCommand({
+      NumberOfBytes: 32,
+    })
+  );
 
   if (randomResult.Plaintext == null)
     throw new Error('Unable to generate session id');
@@ -59,7 +56,6 @@ export const createSession = async (
   const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
   const session: SessionRecord = {
     sessionId,
-    authKey,
     ...(connectionId == null ? undefined : { connectionId }),
     status: 'pending',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -71,6 +67,26 @@ export const createSession = async (
     })
   );
   return session;
+};
+
+export const addAuthKeyToSession = async (
+  sessionId: string
+): Promise<string> => {
+  const authKey = await createAuthKey();
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName,
+      Key: {
+        sessionId,
+      },
+      UpdateExpression: 'SET authKey = :authKey',
+      ExpressionAttributeValues: {
+        ':authKey': authKey,
+      },
+    })
+  );
+  return authKey;
 };
 
 export const updateSessionConnectionId = async (

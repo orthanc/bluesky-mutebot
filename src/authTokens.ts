@@ -25,7 +25,8 @@ const ssmClient = new SSMClient({});
 export const generateAuthToken = async (
   keyName: string,
   sessionId: string,
-  expiresIn: string
+  expiresIn: string,
+  use: string
 ): Promise<string> => {
   const tokenAudience = `${keyName.split('-')[0]}-${deployStage}`;
   const parameter = await ssmClient.send(
@@ -45,7 +46,7 @@ export const generateAuthToken = async (
   const key = JSON.parse(parameter.Parameter.Value) as JwkKey;
   const keyBytes = Buffer.from(base64url.decode(key.k));
 
-  return jwt.sign({}, keyBytes, {
+  return jwt.sign({ use }, keyBytes, {
     subject: sessionId,
     audience: tokenAudience,
     issuer: tokenIssuer,
@@ -59,7 +60,7 @@ export const generateAuthToken = async (
 export const validateAuthToken = async (
   keyName: string,
   authToken: string
-): Promise<{ sessionId: string; expiresAt: number }> => {
+): Promise<{ sessionId: string; use?: string; expiresAt: number }> => {
   const tokenAudience = `${keyName.split('-')[0]}-${deployStage}`;
   const parametersResult = await ssmClient.send(
     new GetParametersByPathCommand({
@@ -108,8 +109,9 @@ export const validateAuthToken = async (
   );
 
   if (typeof decodedToken === 'object' && decodedToken != null) {
-    const { sub, exp } = decodedToken as {
+    const { sub, use, exp } = decodedToken as {
       sub?: string;
+      use?: string;
       screen_name?: string;
       admin?: boolean;
       exp: number;
@@ -117,6 +119,7 @@ export const validateAuthToken = async (
     if (typeof sub === 'string') {
       return {
         sessionId: sub,
+        use,
         expiresAt: exp,
       };
     }

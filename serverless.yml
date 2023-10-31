@@ -9,22 +9,6 @@ provider:
   memorySize: 1024
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
-  httpApi:
-    cors:
-      allowedHeaders:
-        - authorization
-        - content-type
-        - x-amz-date
-        - x-amz-security-token
-        - x-amz-user-agent
-        - x-amzn-trace-id
-        - x-api-key
-        - hx-current-url
-        - hx-request
-        - hx-target
-      exposedResponseHeaders:
-        - hx-trigger
-        - hx-trigger-after-settle
 
   environment:
     DEPLOY_STAGE: ${self:provider.stage}
@@ -89,11 +73,47 @@ plugins:
   - serverless-offline
 
 functions:
+  bff:
+    handler: ./src/endpoints/bff/web.handler
+    events:
+      - httpApi: GET /
+      - httpApi: POST /login/session
+      - httpApi: GET /login/session/auth-code
+      - httpApi: GET /login/session/approval
+    environment:
+      WEB_DOMAIN_NAME: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - kms:GenerateRandom
+        Resource: '*'
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt ConsoleSessionsTable.Arn
+      - Effect: 'Allow'
+        Action:
+          - ssm:GetParameter
+        Resource:
+          - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/current
+      - Effect: 'Allow'
+        Action:
+          - ssm:GetParametersByPath
+        Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
+      - Effect: "Allow"
+        Action:
+          - dynamodb:Query
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+        Resource:
+          - !GetAtt MuteWordsTable.Arn
+
   bff-ws:
-    handler: ./src/endpoints/bff-ws/index.handler
+    handler: ./src/endpoints/bff/ws.handler
     events:
       - websocket: $default
-      - httpApi: POST /console/session
       - httpApi: POST /console/session/poll-authorised
     iamRoleStatements:
       - Effect: Allow
@@ -136,7 +156,7 @@ functions:
         Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
 
   bff-approval-listener:
-    handler: ./src/endpoints/bff-ws/approvalListener.handler
+    handler: ./src/endpoints/bff/approvalListener.handler
     timeout: 300
     events:
       - stream:
@@ -156,6 +176,10 @@ functions:
           - execute-api:ManageConnections
         Resource:
           - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
+      - Effect: "Allow"
+        Action:
+          - kms:GenerateRandom
+        Resource: '*'
       - Effect: "Allow"
         Action:
           - dynamodb:GetItem

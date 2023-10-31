@@ -75,7 +75,7 @@ export const rawHandler = async (
       : JSON.parse(event.body as string).HEADERS.Authorization;
   const authToken = authHeader?.replace(/^Bearer /, '').trim();
   if (authToken == null) {
-    throw createHttpError(403, 'No Auth Token');
+    throw new (403, 'No Auth Token')();
   }
   const { sessionId } = await validateAuthToken(
     'access-token-signing-key',

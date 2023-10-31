@@ -7,6 +7,7 @@ import {
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import {
   SessionRecord,
+  addAuthKeyToSession,
   authorizeSession,
   getSessionBySessionId,
 } from './sessionStore';
@@ -61,8 +62,9 @@ export const rawHandler = async (
   const { sessionId } = event;
   const session = await getSessionBySessionId(sessionId);
   if (session == null) return;
-  const { authKey, connectionId } = session;
+  const { connectionId } = session;
 
+  const authKey = await addAuthKeyToSession(sessionId);
   const [approvalPost, agent] = await Promise.all([
     getApprovalPost(
       authKey,
