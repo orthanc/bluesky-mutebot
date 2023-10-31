@@ -151,16 +151,22 @@ export const getSubscriberFollowingRecord = async (
   );
 };
 
+const didPrefixLength = 'did:plc:'.length + 2;
+const getDidPrefix = (did: string) => did.substring(0, didPrefixLength);
+
 export const saveUpdates = async (
   subscriberFollowing: FollowingRecord,
   operations: Array<FollowingUpdate>
 ) => {
-  const TableName = process.env.SUBSCRIBER_FOLLOWING_TABLE as string;
+  const subscriberFollowingTableName = process.env
+    .SUBSCRIBER_FOLLOWING_TABLE as string;
+  const followedByCountTableName = process.env
+    .FOLLOWED_BY_COUNT_TABLE as string;
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 49);
-    remainingOperations = remainingOperations.slice(49);
+    const batch = remainingOperations.slice(0, 33);
+    remainingOperations = remainingOperations.slice(33);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -193,7 +199,7 @@ export const saveUpdates = async (
       updatedSubscriberFollowing.selfRecorded
         ? {
             Put: {
-              TableName,
+              TableName: subscriberFollowingTableName,
               Item: updatedSubscriberFollowing,
               ...(lastRev === 0
                 ? {
@@ -207,7 +213,7 @@ export const saveUpdates = async (
           }
         : {
             Delete: {
-              TableName,
+              TableName: subscriberFollowingTableName,
               Key: {
                 subscriberDid: updatedSubscriberFollowing.subscriberDid,
                 qualifier: updatedSubscriberFollowing.qualifier,
@@ -225,7 +231,7 @@ export const saveUpdates = async (
             updates.push(
               {
                 Update: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: 'aggregate',
                     qualifier: operation.following.did,
@@ -244,7 +250,22 @@ export const saveUpdates = async (
               },
               {
                 Update: {
-                  TableName,
+                  TableName: followedByCountTableName,
+                  Key: {
+                    didPrefix: getDidPrefix(operation.following.did),
+                  },
+                  UpdateExpression: 'SET #didfollow = :true',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `${operation.following.did}__${subscriberFollowing.subscriberDid}`,
+                  },
+                  ExpressionAttributeValues: {
+                    ':true': true,
+                  },
+                },
+              },
+              {
+                Update: {
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: operation.following.did,
                     qualifier: subscriberFollowing.subscriberDid,
@@ -260,7 +281,7 @@ export const saveUpdates = async (
             updates.push(
               {
                 Update: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: 'aggregate',
                     qualifier: operation.following.did,
@@ -275,8 +296,20 @@ export const saveUpdates = async (
                 },
               },
               {
+                Update: {
+                  TableName: followedByCountTableName,
+                  Key: {
+                    didPrefix: getDidPrefix(operation.following.did),
+                  },
+                  UpdateExpression: 'REMOVE #didfollow',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `${operation.following.did}__${subscriberFollowing.subscriberDid}`,
+                  },
+                },
+              },
+              {
                 Delete: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: operation.following.did,
                     qualifier: subscriberFollowing.subscriberDid,
@@ -288,7 +321,7 @@ export const saveUpdates = async (
             updates.push(
               {
                 Update: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: 'aggregate',
                     qualifier: subscriberFollowing.subscriberDid,
@@ -306,7 +339,22 @@ export const saveUpdates = async (
               },
               {
                 Update: {
-                  TableName,
+                  TableName: followedByCountTableName,
+                  Key: {
+                    didPrefix: getDidPrefix(subscriberFollowing.subscriberDid),
+                  },
+                  UpdateExpression: 'SET #didfollow = :true',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `${subscriberFollowing.subscriberDid}__${subscriberFollowing.subscriberDid}`,
+                  },
+                  ExpressionAttributeValues: {
+                    ':true': true,
+                  },
+                },
+              },
+              {
+                Update: {
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: subscriberFollowing.subscriberDid,
                     qualifier: subscriberFollowing.subscriberDid,
@@ -322,7 +370,7 @@ export const saveUpdates = async (
             updates.push(
               {
                 Update: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: 'aggregate',
                     qualifier: subscriberFollowing.subscriberDid,
@@ -337,8 +385,20 @@ export const saveUpdates = async (
                 },
               },
               {
+                Update: {
+                  TableName: followedByCountTableName,
+                  Key: {
+                    didPrefix: getDidPrefix(subscriberFollowing.subscriberDid),
+                  },
+                  UpdateExpression: 'REMOVE #didfollow',
+                  ExpressionAttributeNames: {
+                    '#didfollow': `${subscriberFollowing.subscriberDid}__${subscriberFollowing.subscriberDid}`,
+                  },
+                },
+              },
+              {
                 Delete: {
-                  TableName,
+                  TableName: subscriberFollowingTableName,
                   Key: {
                     subscriberDid: subscriberFollowing.subscriberDid,
                     qualifier: subscriberFollowing.subscriberDid,
