@@ -207,8 +207,8 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
 
   console.log({ maxReadTimeMillis });
 
-  const followedByFinder = new AggregateFollowedByFinder();
-  // const followedByFinder = new FollowedByCountFollowedByFinder();
+  // const followedByFinder = new AggregateFollowedByFinder();
+  const followedByFinder = new FollowedByCountFollowedByFinder();
 
   let operationCount = 0;
   let posts: Record<string, CreateOp<PostRecord | RepostRecord>> = {};
