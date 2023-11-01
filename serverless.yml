@@ -225,6 +225,7 @@ functions:
           - dynamodb:BatchGetItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+          - !GetAtt FollowedByCountTable.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:BatchWriteItem

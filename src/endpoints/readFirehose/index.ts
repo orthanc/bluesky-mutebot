@@ -7,6 +7,8 @@ import type { Record as RepostRecord } from '@atproto/api/dist/client/types/app/
 import {
   AggregateListRecord,
   batchGetAggregateListRecord,
+  batchGetFollowedByCountRecords,
+  getDidPrefix,
 } from '../../followingStore';
 import {
   POST_RETENTION_SECONDS,
@@ -15,28 +17,150 @@ import {
 } from '../../postsStore';
 import { postToPostTableRecord } from './postToPostTableRecord';
 
+interface FollowedByFinder {
+  uniqueResolves: () => number;
+  shouldResolveDids: () => boolean;
+  resolveDids: () => Promise<void>;
+  didEncountered: (authorDid: string) => void;
+  isKnownNotFollowed: (authorDid: string) => boolean;
+  getFollowedBy: (authorDid: string) => Record<string, true> | undefined;
+}
+
+class AggregateFollowedByFinder {
+  private readonly resolvedDids: Record<string, AggregateListRecord | false> =
+    {};
+  private readonly didsToResolve: Set<string> = new Set();
+  private readonly followedBy: Record<string, Record<string, true> | false> =
+    {};
+
+  uniqueResolves() {
+    return Object.keys(this.resolvedDids).length;
+  }
+
+  shouldResolveDids(): boolean {
+    return this.didsToResolve.size >= 100;
+  }
+
+  async resolveDids() {
+    const didsToResolve = Array.from(this.didsToResolve);
+    this.didsToResolve.clear();
+    const newlyResolvedDids = await batchGetAggregateListRecord(didsToResolve);
+    didsToResolve.forEach(
+      (did) => (this.resolvedDids[did] = newlyResolvedDids[did] ?? false)
+    );
+  }
+
+  didEncountered(authorDid: string) {
+    if (this.resolvedDids[authorDid] === undefined) {
+      this.didsToResolve.add(authorDid);
+    }
+  }
+
+  isKnownNotFollowed(authorDid: string): boolean {
+    return this.resolvedDids[authorDid] === false;
+  }
+
+  getFollowedBy(authorDid: string): Record<string, true> | undefined {
+    let followedBy = this.followedBy[authorDid];
+    if (followedBy === false) return undefined;
+    if (followedBy != null) return followedBy;
+    const followedByRecord = this.resolvedDids[authorDid];
+    if (followedByRecord == null) return undefined;
+    if (followedByRecord && followedByRecord.followedBy > 0) {
+      const followedByEntries = Object.entries(followedByRecord)
+        .filter(([key]) => key.startsWith('followedBy_'))
+        .map(([key]): [string, true] => [key.substring(11), true]);
+      if (followedByEntries.length > 0) {
+        followedBy = Object.fromEntries(followedByEntries);
+      }
+    }
+    this.followedBy[authorDid] = followedBy ?? false;
+
+    return followedBy;
+  }
+}
+
+class FollowedByCountFollowedByFinder {
+  private readonly followedByCountRecords: Record<
+    string,
+    Record<string, true> | false
+  > = {};
+  private readonly didPrefixesToResolve: Set<string> = new Set();
+  private readonly followedBy: Record<string, Record<string, true> | false> =
+    {};
+
+  uniqueResolves() {
+    return Object.keys(this.followedByCountRecords).length;
+  }
+
+  shouldResolveDids(): boolean {
+    return this.didPrefixesToResolve.size >= 100;
+  }
+
+  async resolveDids() {
+    const didPrefixesToResolve = Array.from(this.didPrefixesToResolve);
+    this.didPrefixesToResolve.clear();
+    const newFollowedByCountRecords =
+      await batchGetFollowedByCountRecords(didPrefixesToResolve);
+    didPrefixesToResolve.forEach(
+      (didPrefix) =>
+        (this.followedByCountRecords[didPrefix] =
+          newFollowedByCountRecords[didPrefix] ?? false)
+    );
+  }
+
+  didEncountered(authorDid: string) {
+    const didPrefix = getDidPrefix(authorDid);
+    if (this.followedByCountRecords[didPrefix] === undefined) {
+      this.didPrefixesToResolve.add(didPrefix);
+    }
+  }
+
+  isKnownNotFollowed(authorDid: string): boolean {
+    const didPrefix = getDidPrefix(authorDid);
+    if (this.followedByCountRecords[didPrefix] == null) return false;
+    return this.getFollowedBy(authorDid) == null;
+  }
+
+  getFollowedBy(authorDid: string): Record<string, true> | undefined {
+    let followedBy = this.followedBy[authorDid];
+    if (followedBy === false) return undefined;
+    if (followedBy != null) return followedBy;
+
+    const didPrefix = getDidPrefix(authorDid);
+    const followedByCountRecord = this.followedByCountRecords[didPrefix];
+    if (followedByCountRecord == null) return undefined;
+    if (followedByCountRecord !== false) {
+      const followedByPrefix = `${authorDid}__`;
+      const followedByEntries = Object.entries(followedByCountRecord)
+        .filter(([key]) => key.startsWith(followedByPrefix))
+        .map(([key]): [string, true] => [
+          key.substring(followedByPrefix.length),
+          true,
+        ]);
+      if (followedByEntries.length > 0) {
+        followedBy = Object.fromEntries(followedByEntries);
+      }
+    }
+    this.followedBy[authorDid] = followedBy ?? false;
+
+    return followedBy;
+  }
+}
+
 const processBatch = async (
-  resolvedDids: Record<string, AggregateListRecord | false>,
-  didsToResolve: ReadonlyArray<string>,
+  followByFinder: FollowedByFinder,
   posts: ReadonlyArray<CreateOp<PostRecord | RepostRecord>>,
   deletes: ReadonlyArray<DeleteOp>
 ) => {
   const expiresAt = Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS;
-  const newlyResolvedDids = await batchGetAggregateListRecord(didsToResolve);
-  didsToResolve.forEach(
-    (did) => (resolvedDids[did] = newlyResolvedDids[did] ?? false)
-  );
+  await followByFinder.resolveDids();
 
   let postsSaved = 0;
   let repostsSaved = 0;
   const postsToSave = posts.flatMap((post): Array<PostTableRecord> => {
-    const followedByRecord = resolvedDids[post.author];
-    if (!followedByRecord || followedByRecord.followedBy === 0) return [];
-    const followedBy = Object.fromEntries(
-      Object.entries(followedByRecord)
-        .filter(([key]) => key.startsWith('followedBy_'))
-        .map(([key]): [string, true] => [key.substring(11), true])
-    );
+    const followedBy = followByFinder.getFollowedBy(post.author);
+    if (followedBy == null) return [];
     if (post.type === ids.AppBskyFeedRepost && post.record.subject != null) {
       repostsSaved++;
       return [
@@ -66,7 +190,7 @@ const processBatch = async (
     return [];
   });
   const deletesToApply = deletes
-    .filter(({ author }) => Boolean(resolvedDids[author]))
+    .filter(({ author }) => followByFinder.getFollowedBy(author) != null)
     .map((del) => del.uri);
   await savePostsBatch(postsToSave, deletesToApply);
   return {
@@ -83,8 +207,8 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
 
   console.log({ maxReadTimeMillis });
 
-  const resolvedDids: Record<string, AggregateListRecord | false> = {};
-  const didsToResolve = new Set<string>();
+  const followedByFinder = new AggregateFollowedByFinder();
+  // const followedByFinder = new FollowedByCountFollowedByFinder();
 
   let operationCount = 0;
   let posts: Record<string, CreateOp<PostRecord | RepostRecord>> = {};
@@ -99,14 +223,11 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
   for await (const op of listPostChanges({ maxReadTimeMillis })) {
     const { author } = op;
     // We know we don't care about this author
-    if (resolvedDids[author] === false) {
+    if (followedByFinder.isKnownNotFollowed(author)) {
       operationsSkipped++;
       continue;
     }
-    // We don't know if we care about this author
-    if (resolvedDids[author] === undefined) {
-      didsToResolve.add(author);
-    }
+    followedByFinder.didEncountered(author);
     if (op.op === 'create') {
       posts[op.uri] = op;
       operationCount++;
@@ -121,10 +242,9 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
         operationCount++;
       }
     }
-    if (didsToResolve.size >= 100 || operationCount >= 1000) {
+    if (followedByFinder.shouldResolveDids() || operationCount >= 1000) {
       const metrics = await processBatch(
-        resolvedDids,
-        Array.from(didsToResolve),
+        followedByFinder,
         Object.values(posts),
         Array.from(deletes)
       );
@@ -134,13 +254,11 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
       posts = {};
       deletes = new Set();
       operationCount = 0;
-      didsToResolve.clear();
     }
   }
   if (operationCount > 0) {
     const metrics = await processBatch(
-      resolvedDids,
-      Array.from(didsToResolve),
+      followedByFinder,
       Object.values(posts),
       Array.from(deletes)
     );
@@ -158,6 +276,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
       deletesApplied,
       start: start.toISOString(),
       syncTimeMs: Date.now() - start.getTime(),
+      uniqueResolves: followedByFinder.uniqueResolves(),
     })}`
   );
 };

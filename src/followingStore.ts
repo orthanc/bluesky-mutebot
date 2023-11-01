@@ -152,7 +152,7 @@ export const getSubscriberFollowingRecord = async (
 };
 
 const didPrefixLength = 'did:plc:'.length + 2;
-const getDidPrefix = (did: string) => did.substring(0, didPrefixLength);
+export const getDidPrefix = (did: string) => did.substring(0, didPrefixLength);
 
 export const saveUpdates = async (
   subscriberFollowing: FollowingRecord,
@@ -428,6 +428,38 @@ export const getAggregateListRecord = async (
     })
   );
   return result.Item as AggregateListRecord | undefined;
+};
+
+export const batchGetFollowedByCountRecords = async (
+  didPrefixes: ReadonlyArray<string>
+): Promise<Record<string, Record<string, true>>> => {
+  const TableName = process.env.FOLLOWED_BY_COUNT_TABLE as string;
+
+  let keys: Array<Record<string, unknown>> = didPrefixes.map((didPrefix) => ({
+    didPrefix,
+  }));
+  const records: Record<string, Record<string, true>> = {};
+  while (keys.length > 0) {
+    const batch = keys.slice(0, 100);
+    keys = keys.slice(100);
+    const result = await ddbDocClient.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [TableName]: {
+            Keys: batch,
+          },
+        },
+      })
+    );
+    const unprocessedKeys = result.UnprocessedKeys?.[TableName]?.Keys;
+    if (unprocessedKeys != null) {
+      keys.push(...unprocessedKeys);
+    }
+    result.Responses?.[TableName]?.forEach(
+      (item) => (records[item.didPrefix] = item as Record<string, true>)
+    );
+  }
+  return records;
 };
 
 export const batchGetAggregateListRecord = async (
