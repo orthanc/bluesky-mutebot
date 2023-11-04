@@ -14,6 +14,7 @@ provider:
     PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
+    FOLLOWED_BY_COUNT_TABLE: ${self:custom.followedByCountTable}
     MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
@@ -44,6 +45,7 @@ custom:
       endpointType: regional
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
+  followedByCountTable: ${self:service}-${self:provider.stage}-followed-by-count
   muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
@@ -223,6 +225,7 @@ functions:
           - dynamodb:BatchGetItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+          - !GetAtt FollowedByCountTable.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:BatchWriteItem
@@ -293,6 +296,7 @@ functions:
           - dynamodb:DeleteItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+          - !GetAtt FollowedByCountTable.Arn
 
   syncSubscriberFollowing-onFolUnfol:
     handler: ./src/endpoints/syncSubscriberFollowing/onFollowUnfollow.handler
@@ -395,6 +399,18 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: True
+
+    FollowedByCountTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.followedByCountTable}
+        AttributeDefinitions:
+          - AttributeName: didPrefix
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: didPrefix
+            KeyType: HASH
 
     PostsTable:
       Type: AWS::DynamoDB::Table
