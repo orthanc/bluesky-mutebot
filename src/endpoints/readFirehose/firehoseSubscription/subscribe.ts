@@ -110,7 +110,7 @@ export class OperationsSubscription
     const { cursor, ...otherOpts } = opts;
     this.sub = new Subscription({
       ...otherOpts,
-      service: 'wss://bsky.social',
+      service: 'wss://bsky.network',
       method: ids.ComAtprotoSyncSubscribeRepos,
       getParams:
         cursor == null
