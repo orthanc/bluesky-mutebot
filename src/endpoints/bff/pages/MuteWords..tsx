@@ -6,14 +6,14 @@ export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
       <ul>
         {muteWords.map((word) => (
           <li>
-            <button name="unmuteWord" value={word} ws-send>
+            <button name="unmuteWord" value={word} hx-post="/mutewords">
               Unmute
             </button>{' '}
             {word}
           </li>
         ))}
       </ul>
-      <form ws-send>
+      <form hx-post="/mutewords">
         <input type="text" name="muteWord" placeholder="word to mute" />
         <input type="submit" value="Mute" />
       </form>

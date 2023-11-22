@@ -1,3 +1,5 @@
 export const Content: preact.FunctionalComponent = ({ children }) => (
-  <div id="content">{children}</div>
+  <div id="content" hx-target="#content">
+    {children}
+  </div>
 );

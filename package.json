@@ -49,6 +49,7 @@
     "@middy/core": "^4.6.4",
     "@middy/http-error-handler": "^4.6.5",
     "@middy/http-header-normalizer": "^4.6.5",
+    "@middy/http-urlencode-body-parser": "^4.7.0",
     "base64url": "^3.0.1",
     "cookie": "^0.5.0",
     "http-errors": "^2.0.0",

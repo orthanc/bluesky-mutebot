@@ -80,6 +80,9 @@ functions:
       - httpApi: POST /login/session
       - httpApi: GET /login/session/auth-code
       - httpApi: GET /login/session/approval
+      - httpApi: POST /logout
+      - httpApi: GET /mutewords
+      - httpApi: POST /mutewords
     environment:
       WEB_DOMAIN_NAME: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
     iamRoleStatements:
@@ -109,51 +112,6 @@ functions:
           - dynamodb:DeleteItem
         Resource:
           - !GetAtt MuteWordsTable.Arn
-
-  bff-ws:
-    handler: ./src/endpoints/bff/ws.handler
-    events:
-      - websocket: $default
-      - httpApi: POST /console/session/poll-authorised
-    iamRoleStatements:
-      - Effect: Allow
-        Action:
-          - execute-api:ManageConnections
-        Resource:
-          - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
-      - Effect: "Allow"
-        Action:
-          - dynamodb:PutItem
-          - dynamodb:GetItem
-          - dynamodb:UpdateItem
-        Resource:
-          - !GetAtt ConsoleSessionsTable.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:Query
-        Resource:
-          - !Sub "${ConsoleSessionsTable.Arn}/*"
-      - Effect: "Allow"
-        Action:
-          - dynamodb:Query
-          - dynamodb:PutItem
-          - dynamodb:DeleteItem
-        Resource:
-          - !GetAtt MuteWordsTable.Arn
-      - Effect: "Allow"
-        Action:
-          - kms:GenerateRandom
-        Resource: '*'
-      - Effect: 'Allow'
-        Action:
-          - ssm:GetParameter
-        Resource:
-          - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/current
-          - ${self:custom.ssmEnvironmentBaseArn}/resume-token-signing-key/current
-      - Effect: 'Allow'
-        Action:
-          - ssm:GetParametersByPath
-        Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
 
   bff-approval-listener:
     handler: ./src/endpoints/bff/approvalListener.handler

@@ -11,7 +11,7 @@ export const BleetToAuthorise = ({ authKey }: { authKey: string }) => {
         hx-get={`/login/session/approval`}
         hx-swap="outerHtml"
         hx-trigger="every 1s"
-        hx-target="#content"
+        hx-target="body"
       ></form>
     </Content>
   );
