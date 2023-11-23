@@ -6,8 +6,7 @@
     "start": "ts-node src/index.ts",
     "lint": "eslint src",
     "prettier": "prettier 'src/**/*.ts' --write",
-    "build:public": "eval \"$(node setEnv.js)\" && rm -rf dist && cp -r public dist && rm dist/*.ejs && ejs ./public/index.html.ejs -o ./dist/index.html",
-    "deploy:public": "eval \"$(node setEnv.js)\" && npm run build:public && aws s3 sync dist/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/ --cache-control 'max-age=31536000' --exclude '*.html' && aws s3 sync dist/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/ --exclude '*' --include '*.html' --cache-control no-cache"
+    "deploy:public": "eval \"$(node setEnv.js)\" && aws s3 sync public/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/static/ --cache-control 'max-age=31536000' --exclude '*.html'"
   },
   "author": "",
   "license": "UNLICENSED",

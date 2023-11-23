@@ -62,7 +62,7 @@ resources:
               - POST
               - DELETE
           CacheBehaviors: 
-            - PathPattern: "*.js"
+            - PathPattern: "static/*"
               ViewerProtocolPolicy: redirect-to-https
               CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Optimized
               Compress: True
