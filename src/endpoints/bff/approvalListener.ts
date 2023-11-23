@@ -15,9 +15,9 @@ import { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import { OperationsSubscription } from '../readFirehose/firehoseSubscription/subscribe';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 import { getBskyAgent } from '../../bluesky';
-import { renderBleetToAuthorise } from './components/BleetToAuthorise';
+// import { renderBleetToAuthorise } from './components/BleetToAuthorise';
 import { getMuteWords } from '../../muteWordsStore';
-import { renderMuteWordsContent } from './components/MuteWordsContent';
+// import { renderMuteWordsContent } from './components/MuteWordsContent';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
@@ -29,12 +29,12 @@ const getApprovalPost = async (
   connectionId: string | undefined
 ) => {
   if (connectionId != null) {
-    await client.send(
-      new PostToConnectionCommand({
-        Data: renderBleetToAuthorise(authKey),
-        ConnectionId: connectionId,
-      })
-    );
+    // await client.send(
+    //   new PostToConnectionCommand({
+    //     Data: renderBleetToAuthorise(authKey),
+    //     ConnectionId: connectionId,
+    //   })
+    // );
   }
 
   const serviceUserDid = process.env.BLUESKY_SERVICE_USER_DID as string;
@@ -84,12 +84,12 @@ export const rawHandler = async (
       subscriberHandle: profile.data.handle,
     }),
   ]);
-  await client.send(
-    new PostToConnectionCommand({
-      Data: renderMuteWordsContent(profile.data.handle, muteWords),
-      ConnectionId: connectionId,
-    })
-  );
+  // await client.send(
+  //   new PostToConnectionCommand({
+  //     Data: renderMuteWordsContent(profile.data.handle, muteWords),
+  //     ConnectionId: connectionId,
+  //   })
+  // );
 };
 
 export const handler = middy(rawHandler).before((request) => {
