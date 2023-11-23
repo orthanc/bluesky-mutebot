@@ -41,11 +41,9 @@ const getPossiblyPendingSession = async (
   }
 ): Promise<{ session?: SessionRecord; csrfToken?: string }> => {
   const { validateCSRF = true } = options;
-  const cookieHeader = event.headers.cookie;
-  if (cookieHeader == null) {
-    return {};
-  }
-  const { 'mutebot-session': sessionCookie } = cookie.parse(cookieHeader);
+  const sessionCookie = event.cookies
+    ?.find((cookie) => cookie.startsWith('mutebot-session='))
+    ?.substring('mutebot-session='.length);
   if (sessionCookie == null) {
     return {};
   }
