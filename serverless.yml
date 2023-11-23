@@ -13,6 +13,7 @@ provider:
   environment:
     DEPLOY_STAGE: ${self:provider.stage}
     PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
+    WEB_DOMAIN_NAME: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
     # WEBSOCKET_HOSTNAME: ${self:custom.customDomain.websocket.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
@@ -83,8 +84,6 @@ functions:
       - httpApi: POST /logout
       - httpApi: GET /mutewords
       - httpApi: POST /mutewords
-    environment:
-      WEB_DOMAIN_NAME: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
     iamRoleStatements:
       - Effect: "Allow"
         Action:

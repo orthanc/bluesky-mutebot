@@ -344,7 +344,7 @@ export const rawHandler = async (
   const jwt = authorization.replace('Bearer ', '').trim();
   const requesterDid = await verifyJwt(
     jwt,
-    `did:web:${process.env.PUBLIC_HOSTNAME}`,
+    `did:web:${process.env.WEB_DOMAIN_NAME}`,
     async (did: string) => {
       return didResolver.resolveAtprotoKey(did);
     }
