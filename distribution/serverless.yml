@@ -43,14 +43,30 @@ resources:
               OriginPath: /${self:service}/${self:provider.stage}
               S3OriginConfig:
                 OriginAccessIdentity: ${ssm:content-bucket-access-identity}
+            - Id: HttpApi
+              DomainName: ${ssm:/bluesky-feeds/${self:provider.stage}/domain-name}
+              CustomOriginConfig:
+                OriginProtocolPolicy: https-only
           DefaultCacheBehavior:
             ViewerProtocolPolicy: redirect-to-https
-            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Optimized
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader
             Compress: True
-            TargetOriginId: ContentBucket
-            FunctionAssociations:
-              - EventType: viewer-request
-                FunctionARN: !GetAtt Redirects.FunctionARN
+            TargetOriginId: HttpApi
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+          CacheBehaviors: 
+            - PathPattern: "*.js"
+              ViewerProtocolPolicy: redirect-to-https
+              CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 #Caching Optimized
+              Compress: True
+              TargetOriginId: ContentBucket
 
     Redirects:
       Type: AWS::CloudFront::Function
