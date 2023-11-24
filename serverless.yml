@@ -9,9 +9,12 @@ provider:
   memorySize: 1024
   deploymentBucket:
     name: ${ssm:deployment-artifacts-bucket}
+
   environment:
     DEPLOY_STAGE: ${self:provider.stage}
     PUBLIC_HOSTNAME: ${self:custom.customDomain.http.domainName}
+    WEB_DOMAIN_NAME: ${ssm:/bluesky-feeds/${self:provider.stage}/console/web-domain-name}
+    # WEBSOCKET_HOSTNAME: ${self:custom.customDomain.websocket.domainName}
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     FOLLOWED_BY_COUNT_TABLE: ${self:custom.followedByCountTable}
@@ -19,7 +22,7 @@ provider:
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
     CONSOLE_SESSIONS_TABLE: ${self:custom.consoleSessionsTable}
-    WEBSOCKET_ENDPOINT: https://${self:custom.customDomain.websocket.domainName}
+    # WEBSOCKET_ENDPOINT: https://${self:custom.customDomain.websocket.domainName}
     BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
     BLUESKY_SERVICE_USER_DID: ${ssm:/bluesky-feeds/${self:provider.stage}/service/user-did}
 
@@ -38,11 +41,11 @@ custom:
       endpointType: REGIONAL
       securityPolicy: tls_1_2
       apiType: http
-    websocket:
-      domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/console/ws-domain-name}
-      certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
-      securityPolicy: tls_1_2
-      endpointType: regional
+    # websocket:
+    #   domainName: ${ssm:/bluesky-feeds/${self:provider.stage}/console/ws-domain-name}
+    #   certificateArn: ${ssm:/bluesky-feeds/${self:provider.stage}/certificate-arn}
+    #   securityPolicy: tls_1_2
+    #   endpointType: regional
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   followedByCountTable: ${self:service}-${self:provider.stage}-followed-by-count
@@ -68,28 +71,39 @@ plugins:
   - serverless-iam-roles-per-function
   - serverless-prune-plugin
   - serverless-plugin-log-retention
+  - serverless-offline
 
 functions:
-  bff-ws:
-    handler: ./src/endpoints/bff-ws/index.handler
+  bff:
+    handler: ./src/endpoints/bff/web.handler
     events:
-      - websocket: $default
+      - httpApi: GET /
+      - httpApi: POST /login/session
+      - httpApi: GET /login/session/auth-code
+      - httpApi: GET /login/session/approval
+      - httpApi: POST /logout
+      - httpApi: GET /mutewords
+      - httpApi: POST /mutewords
     iamRoleStatements:
-      - Effect: Allow
-        Action:
-          - execute-api:ManageConnections
-        Resource:
-          - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
       - Effect: "Allow"
         Action:
+          - kms:GenerateRandom
+        Resource: '*'
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
           - dynamodb:PutItem
         Resource:
           - !GetAtt ConsoleSessionsTable.Arn
-      - Effect: "Allow"
+      - Effect: 'Allow'
         Action:
-          - dynamodb:Query
+          - ssm:GetParameter
         Resource:
-          - !Sub "${ConsoleSessionsTable.Arn}/*"
+          - ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/current
+      - Effect: 'Allow'
+        Action:
+          - ssm:GetParametersByPath
+        Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
       - Effect: "Allow"
         Action:
           - dynamodb:Query
@@ -97,13 +111,9 @@ functions:
           - dynamodb:DeleteItem
         Resource:
           - !GetAtt MuteWordsTable.Arn
-      - Effect: "Allow"
-        Action:
-          - kms:GenerateRandom
-        Resource: '*'
 
   bff-approval-listener:
-    handler: ./src/endpoints/bff-ws/approvalListener.handler
+    handler: ./src/endpoints/bff/approvalListener.handler
     timeout: 300
     events:
       - stream:
@@ -118,17 +128,18 @@ functions:
     environment:
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
-      - Effect: Allow
-        Action:
-          - execute-api:ManageConnections
-        Resource:
-          - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
+      # - Effect: Allow
+      #   Action:
+      #     - execute-api:ManageConnections
+      #   Resource:
+      #     - !Sub "arn:aws:execute-api:${aws:region}:${aws:accountId}:${WebsocketsApi}/${self:provider.stage}/POST/@connections/*"
       - Effect: "Allow"
         Action:
           - kms:GenerateRandom
         Resource: '*'
       - Effect: "Allow"
         Action:
+          - dynamodb:GetItem
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt ConsoleSessionsTable.Arn

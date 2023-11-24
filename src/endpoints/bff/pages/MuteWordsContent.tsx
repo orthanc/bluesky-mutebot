@@ -1,5 +1,3 @@
-import { render } from 'preact-render-to-string';
-import { Content } from './Content';
 import { MuteWords } from './MuteWords.';
 
 export const MuteWordsContent = ({
@@ -10,17 +8,12 @@ export const MuteWordsContent = ({
   muteWords: Array<string>;
 }) => {
   return (
-    <Content>
+    <>
       <h1>Welcome {handle}</h1>
       <MuteWords muteWords={muteWords} />
-      <form id="form" ws-send>
+      <form hx-get="/mutewords">
         <input type="submit" name="loadMuteWords" value="Get Mute Words" />
       </form>
-    </Content>
+    </>
   );
 };
-
-export const renderMuteWordsContent = (
-  handle: string,
-  muteWords: Array<string>
-) => render(<MuteWordsContent handle={handle} muteWords={muteWords} />);

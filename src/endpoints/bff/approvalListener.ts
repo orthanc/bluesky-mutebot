@@ -5,39 +5,51 @@ import {
   ApiGatewayManagementApiClient,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import { SessionRecord, authorizeSession, createAuthKey } from './sessionStore';
+import {
+  SessionRecord,
+  addAuthKeyToSession,
+  authorizeSession,
+  getSessionBySessionId,
+} from './sessionStore';
 import { Context, DynamoDBStreamEvent } from 'aws-lambda';
 import { OperationsSubscription } from '../readFirehose/firehoseSubscription/subscribe';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 import { getBskyAgent } from '../../bluesky';
-import { renderBleetToAuthorise } from './components/BleetToAuthorise';
+// import { renderBleetToAuthorise } from './components/BleetToAuthorise';
 import { getMuteWords } from '../../muteWordsStore';
-import { renderMuteWordsContent } from './components/MuteWordsContent';
+// import { renderMuteWordsContent } from './components/MuteWordsContent';
 
 const client = new ApiGatewayManagementApiClient({
   endpoint: process.env.WEBSOCKET_ENDPOINT,
 });
 
-const getApprovalPost = async (connectionId: string, timeoutMillis: number) => {
-  const authKey = await createAuthKey();
-
-  await client.send(
-    new PostToConnectionCommand({
-      Data: renderBleetToAuthorise(authKey),
-      ConnectionId: connectionId,
-    })
-  );
+const getApprovalPost = async (
+  authKey: string,
+  timeoutMillis: number,
+  connectionId: string | undefined
+) => {
+  if (connectionId != null) {
+    // await client.send(
+    //   new PostToConnectionCommand({
+    //     Data: renderBleetToAuthorise(authKey),
+    //     ConnectionId: connectionId,
+    //   })
+    // );
+  }
 
   const serviceUserDid = process.env.BLUESKY_SERVICE_USER_DID as string;
-  const authRegex = new RegExp(`let me in ${authKey}`);
+  const tagAuthRegex = new RegExp(`let me in ${authKey}`);
+  const authRegex = new RegExp(`!mutebot let me in ${authKey}`);
   const subscription = new OperationsSubscription({
     signal: AbortSignal.timeout(timeoutMillis),
   });
   for await (const event of subscription) {
     for (const post of event.posts.creates) {
       const postRecord = postToPostTableRecord(post, 0, {});
-      if (postRecord.mentionedDids.includes(serviceUserDid)) {
-        if (postRecord.textEntries[0]?.match(authRegex)) {
+      if (postRecord.textEntries[0]?.match(authRegex)) {
+        return postRecord;
+      } else if (postRecord.mentionedDids.includes(serviceUserDid)) {
+        if (postRecord.textEntries[0]?.match(tagAuthRegex)) {
           return postRecord;
         }
       }
@@ -50,13 +62,18 @@ export const rawHandler = async (
   event: SessionRecord,
   context: Context
 ): Promise<void> => {
-  console.log(event);
+  const { sessionId } = event;
+  const session = await getSessionBySessionId(sessionId);
+  if (session == null) return;
+  const { connectionId } = session;
 
-  const connectionId = event.connectionId;
-
+  const authKey = await addAuthKeyToSession(sessionId);
   const [approvalPost, agent] = await Promise.all([
-    getApprovalPost(connectionId, context.getRemainingTimeInMillis() - 5000),
-    // { author: 'did:plc:crngjmsdh3zpuhmd5gtgwx6q' },
+    getApprovalPost(
+      authKey,
+      context.getRemainingTimeInMillis() - 5000,
+      connectionId
+    ),
     getBskyAgent(),
   ]);
 
@@ -65,17 +82,17 @@ export const rawHandler = async (
   const [muteWords] = await Promise.all([
     getMuteWords(profile.data.did),
     authorizeSession({
-      sessionId: event.sessionId,
+      sessionId,
       subscriberDid: profile.data.did,
       subscriberHandle: profile.data.handle,
     }),
   ]);
-  await client.send(
-    new PostToConnectionCommand({
-      Data: renderMuteWordsContent(profile.data.handle, muteWords),
-      ConnectionId: connectionId,
-    })
-  );
+  // await client.send(
+  //   new PostToConnectionCommand({
+  //     Data: renderMuteWordsContent(profile.data.handle, muteWords),
+  //     ConnectionId: connectionId,
+  //   })
+  // );
 };
 
 export const handler = middy(rawHandler).before((request) => {

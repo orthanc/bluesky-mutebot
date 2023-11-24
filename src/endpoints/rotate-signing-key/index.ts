@@ -7,15 +7,7 @@ import {
 import { GenerateRandomCommand, KMSClient } from '@aws-sdk/client-kms';
 import base64url from 'base64url';
 import { v4 as uuidv4 } from 'uuid';
-
-type JwkKey = {
-  kid: string;
-  kty: string;
-  use: string;
-  key_ops: Array<string>;
-  alg: string;
-  k: string;
-};
+import { JwkKey } from '../../authTokens';
 
 const ssmClient = new SSMClient({});
 const kmsClient = new KMSClient({});

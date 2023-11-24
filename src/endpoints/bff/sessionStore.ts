@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
+  GetCommand,
   PutCommand,
   QueryCommand,
   UpdateCommand,
@@ -10,7 +11,8 @@ import base64url from 'base64url';
 
 type BaseSessionRecord = {
   sessionId: string;
-  connectionId: string;
+  connectionId?: string;
+  authKey?: string;
   expiresAt: number;
 };
 export type PendingSessionRecord = BaseSessionRecord & {
@@ -39,7 +41,7 @@ export const createAuthKey = async (): Promise<string> => {
 };
 
 export const createSession = async (
-  connectionId: string
+  connectionId?: string
 ): Promise<SessionRecord> => {
   const randomResult = await kmsClient.send(
     new GenerateRandomCommand({
@@ -54,20 +56,56 @@ export const createSession = async (
   const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
   const session: SessionRecord = {
     sessionId,
-    connectionId,
+    ...(connectionId == null ? undefined : { connectionId }),
     status: 'pending',
     expiresAt: Math.floor(Date.now() / 1000) + 3600,
   };
   await ddbDocClient.send(
     new PutCommand({
       TableName,
-      Item: {
-        sessionId,
-        connectionId,
-      },
+      Item: session,
     })
   );
   return session;
+};
+
+export const addAuthKeyToSession = async (
+  sessionId: string
+): Promise<string> => {
+  const authKey = await createAuthKey();
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName,
+      Key: {
+        sessionId,
+      },
+      UpdateExpression: 'SET authKey = :authKey',
+      ExpressionAttributeValues: {
+        ':authKey': authKey,
+      },
+    })
+  );
+  return authKey;
+};
+
+export const updateSessionConnectionId = async (
+  sessionId: string,
+  connectionId: string
+) => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName,
+      Key: {
+        sessionId,
+      },
+      UpdateExpression: 'SET connectionId = :connectionId',
+      ExpressionAttributeValues: {
+        ':connectionId': connectionId,
+      },
+    })
+  );
 };
 
 export const authorizeSession = async (
@@ -97,9 +135,23 @@ export const authorizeSession = async (
   );
 };
 
+export const getSessionBySessionId = async (
+  sessionId: string
+): Promise<SessionRecord | undefined> => {
+  const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
+  const result = await ddbDocClient.send(
+    new GetCommand({
+      TableName,
+      Key: { sessionId },
+    })
+  );
+  if (result.Item == null) return undefined;
+  return result.Item as SessionRecord;
+};
+
 export const getSessionByConnectionId = async (
   connectionId: string
-): Promise<AuthorizedSessionRecord | undefined> => {
+): Promise<SessionRecord | undefined> => {
   const TableName = process.env.CONSOLE_SESSIONS_TABLE as string;
   const result = await ddbDocClient.send(
     new QueryCommand({
@@ -113,5 +165,5 @@ export const getSessionByConnectionId = async (
     })
   );
   if (result.Items == null || result.Items.length === 0) return undefined;
-  return result.Items[0] as AuthorizedSessionRecord;
+  return result.Items[0] as SessionRecord;
 };
