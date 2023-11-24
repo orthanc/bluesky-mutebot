@@ -38,15 +38,18 @@ const getApprovalPost = async (
   }
 
   const serviceUserDid = process.env.BLUESKY_SERVICE_USER_DID as string;
-  const authRegex = new RegExp(`let me in ${authKey}`);
+  const tagAuthRegex = new RegExp(`let me in ${authKey}`);
+  const authRegex = new RegExp(`!mutebot let me in ${authKey}`);
   const subscription = new OperationsSubscription({
     signal: AbortSignal.timeout(timeoutMillis),
   });
   for await (const event of subscription) {
     for (const post of event.posts.creates) {
       const postRecord = postToPostTableRecord(post, 0, {});
-      if (postRecord.mentionedDids.includes(serviceUserDid)) {
-        if (postRecord.textEntries[0]?.match(authRegex)) {
+      if (postRecord.textEntries[0]?.match(authRegex)) {
+        return postRecord;
+      } else if (postRecord.mentionedDids.includes(serviceUserDid)) {
+        if (postRecord.textEntries[0]?.match(tagAuthRegex)) {
           return postRecord;
         }
       }
