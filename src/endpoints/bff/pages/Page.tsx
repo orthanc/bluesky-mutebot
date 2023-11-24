@@ -60,9 +60,9 @@ export const Page: preact.FunctionComponent<PageProps> = ({
         sizes="180x180"
         href={`${STATIC_CONTENT_BASE}/static/favicon-180x180-9d5072e30a9e91304cb40a8d08541c2db1e2a0d8dbadf76f68b5d2f8821a342d.png`}
       />
-      <script src={`${STATIC_CONTENT_BASE}/static/htmx-1.9.6.min.js`}></script>
+      <script src={`${STATIC_CONTENT_BASE}/static/htmx-1.9.9.min.js`}></script>
       <script
-        src={`${STATIC_CONTENT_BASE}/static/htmx-ext-ws-1.9.6.js`}
+        src={`${STATIC_CONTENT_BASE}/static/htmx-ext-ws-1.9.9.js`}
       ></script>
       {csrfToken == null ? null : (
         <script
