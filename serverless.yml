@@ -28,6 +28,9 @@ provider:
 
 
 custom:
+  static:
+    folder: ./public
+    port: 8080
   logRetentionInDays: 90
   prune:
     automatic: true
@@ -71,6 +74,7 @@ plugins:
   - serverless-iam-roles-per-function
   - serverless-prune-plugin
   - serverless-plugin-log-retention
+  - serverless-plugin-static
   - serverless-offline
 
 functions:
@@ -84,6 +88,8 @@ functions:
       - httpApi: POST /logout
       - httpApi: GET /mutewords
       - httpApi: POST /mutewords
+    environment:
+      MUTEBOT_CSS_NAME: ${file('./resolveMutebotCss.js')}
     iamRoleStatements:
       - Effect: "Allow"
         Action:
