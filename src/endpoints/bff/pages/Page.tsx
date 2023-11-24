@@ -1,8 +1,6 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-const STATIC_CONTENT_BASE = process.env.IS_OFFLINE
-  ? `http://localhost:8080`
-  : '/static';
+import { STATIC_CONTENT_BASE } from './constants';
 
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 function gloabalEventHandler() {
   window.addEventListener('DOMContentLoaded', () => {
     document.body.addEventListener('mutebot:csrf-token-issued', (e) => {

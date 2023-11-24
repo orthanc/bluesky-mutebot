@@ -3,7 +3,11 @@
 module.exports = {
   content: ['./src/**/*.tsx'],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        bsky: '#0070ff',
+      },
+    },
   },
   plugins: [],
 };
