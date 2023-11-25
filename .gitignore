@@ -1,4 +1,4 @@
 node_modules
 .serverless
 .build
-dist/
+public/mutebot.*.css

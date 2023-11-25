@@ -24,7 +24,6 @@ import {
 import cookie from 'cookie';
 import { Login } from './Login';
 import { Body } from './Body';
-import { LoggedInLayout } from './LoggedInLayout';
 import { Content } from './Content';
 
 export type WebEvent = APIGatewayProxyEventV2;
@@ -106,11 +105,7 @@ const processLoginRequest = async (
         'login'
       );
       return {
-        node: (
-          <Body>
-            <EstablishingSession />
-          </Body>
-        ),
+        node: <EstablishingSession />,
         headers: {
           'HX-Trigger': JSON.stringify({
             'mutebot:csrf-token-issued': csrfToken,
@@ -163,8 +158,8 @@ const processLoginRequest = async (
 
         return {
           node: (
-            <Body>
-              <LoggedInLayout>{node}</LoggedInLayout>
+            <Body isLoggedIn={true}>
+              <Content>{node}</Content>
             </Body>
           ),
           headers: {
@@ -225,29 +220,12 @@ export const renderResponse = async (
       if (session == null) {
         throw new httpError.Unauthorized('Unknown Session');
       }
-
-      switch (event.routeKey) {
-        case 'GET /mutewords': {
-          const muteWords = await getMuteWords(session.subscriberDid);
-
-          return createHttpResponse({
-            node: (
-              <Content>
-                <MuteWordsContent
-                  handle={session.subscriberHandle}
-                  muteWords={muteWords}
-                />
-              </Content>
-            ),
-          });
-        }
-      }
     } else {
       if (session == null) {
         return createHttpResponse({
           node: (
             <Page>
-              <Body>
+              <Body isLoggedIn={false}>
                 <Login />
               </Body>
             </Page>
@@ -263,8 +241,8 @@ export const renderResponse = async (
       return createHttpResponse({
         node: (
           <Page csrfToken={csrfToken}>
-            <Body>
-              <LoggedInLayout>{node}</LoggedInLayout>
+            <Body isLoggedIn={true}>
+              <Content>{node}</Content>
             </Body>
           </Page>
         ),
@@ -309,9 +287,9 @@ export const renderResponse = async (
       case 'POST /logout': {
         return createHttpResponse({
           node: (
-            <body>
+            <Body isLoggedIn={false}>
               <Login />
-            </body>
+            </Body>
           ),
           headers: {
             'Set-Cookie': cookie.serialize('mutebot-session', '', {

@@ -9,11 +9,8 @@ export const MuteWordsContent = ({
 }) => {
   return (
     <>
-      <h1>Welcome {handle}</h1>
+      <h2 className="text-lg font-bold">Muted words for @{handle}</h2>
       <MuteWords muteWords={muteWords} />
-      <form hx-get="/mutewords">
-        <input type="submit" name="loadMuteWords" value="Get Mute Words" />
-      </form>
     </>
   );
 };
