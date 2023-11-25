@@ -105,11 +105,7 @@ const processLoginRequest = async (
         'login'
       );
       return {
-        node: (
-          <Body isLoggedIn={false}>
-            <EstablishingSession />
-          </Body>
-        ),
+        node: <EstablishingSession />,
         headers: {
           'HX-Trigger': JSON.stringify({
             'mutebot:csrf-token-issued': csrfToken,
