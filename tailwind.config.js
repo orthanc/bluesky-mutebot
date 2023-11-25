@@ -1,5 +1,8 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 /* eslint-disable no-undef */
 /** @type {import('tailwindcss').Config} */
+const plugin = require('tailwindcss/plugin');
+
 module.exports = {
   content: ['./src/**/*.tsx'],
   darkMode: 'class',
@@ -10,5 +13,9 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(function ({ addVariant }) {
+      addVariant('htmx-request', '.htmx-request &');
+    }),
+  ],
 };
