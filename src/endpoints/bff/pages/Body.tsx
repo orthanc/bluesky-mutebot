@@ -21,13 +21,13 @@ export const Body: preact.FunctionComponent<{ isLoggedIn: boolean }> = ({
             <input
               type="submit"
               value="Logout"
-              className="py-1 px-2 rounded-full  bg-slate-300 hover:bg-slate-400  text-slate-800 dark:bg-slate-600 dark:text-slate-200"
+              className="py-1 px-2 w-20 text-sm rounded-full  bg-slate-300 hover:bg-slate-400  text-slate-800 dark:bg-slate-700 dark:hover:bg-slate-500 dark:text-slate-200"
             />
           </form>
         ) : null}
       </div>
       <div className="flex-grow flex justify-center px-4 pb-4">
-        <div className="max-w-md w-full border-solid border border-t-0 rounded-b-xl border-slate-500 bg-slate-100 p-4">
+        <div className="max-w-md w-full border-solid border border-t-0 rounded-b-xl border-slate-500 bg-slate-100 dark:bg-slate-900 p-4">
           {children}
         </div>
       </div>

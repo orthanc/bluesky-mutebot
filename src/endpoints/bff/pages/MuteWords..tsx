@@ -4,7 +4,7 @@ export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
   return (
     <div id="mute-words" className="mt-4 relative" hx-indicator="#mute-words ">
       <div className="none htmx-request:absolute top-0 h-full w-full opacity-0" />
-      <ul className="rounded-lg border-slate-300 border bg-slate-50 htmx-request:animate-pulse">
+      <ul className="rounded-lg border-slate-300 border bg-slate-50 dark:bg-slate-950 htmx-request:animate-pulse">
         {muteWords.map((word) => (
           <li className="flex border-slate-300 border-b p-2 space-x-2 items-center">
             <div className="flex-grow">{word}</div>
@@ -13,7 +13,7 @@ export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
                 name="unmuteWord"
                 value={word}
                 hx-post="/mutewords"
-                className="rounded-full w-20 px-2 py-1 text-sm bg-slate-300 hover:bg-slate-400"
+                className="rounded-full w-20 px-2 py-1 text-sm bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-500"
               >
                 Unmute
               </button>{' '}
@@ -33,7 +33,7 @@ export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
                 placeholder="word or phrase to mute"
                 autoComplete="off"
                 autoFocus={true}
-                className="w-full rounded-lg border border-slate-400 p-1"
+                className="w-full rounded-lg border border-slate-400 dark:bg-slate-600 p-1"
               />
             </div>
             <div>

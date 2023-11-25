@@ -5,7 +5,6 @@ const plugin = require('tailwindcss/plugin');
 
 module.exports = {
   content: ['./src/**/*.tsx'],
-  darkMode: 'class',
   theme: {
     extend: {
       colors: {
