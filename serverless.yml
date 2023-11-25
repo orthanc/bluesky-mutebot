@@ -86,7 +86,6 @@ functions:
       - httpApi: GET /login/session/auth-code
       - httpApi: GET /login/session/approval
       - httpApi: POST /logout
-      - httpApi: GET /mutewords
       - httpApi: POST /mutewords
     environment:
       MUTEBOT_CSS_NAME: ${file('./resolveMutebotCss.js')}

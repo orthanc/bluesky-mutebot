@@ -220,23 +220,6 @@ export const renderResponse = async (
       if (session == null) {
         throw new httpError.Unauthorized('Unknown Session');
       }
-
-      switch (event.routeKey) {
-        case 'GET /mutewords': {
-          const muteWords = await getMuteWords(session.subscriberDid);
-
-          return createHttpResponse({
-            node: (
-              <Content>
-                <MuteWordsContent
-                  handle={session.subscriberHandle}
-                  muteWords={muteWords}
-                />
-              </Content>
-            ),
-          });
-        }
-      }
     } else {
       if (session == null) {
         return createHttpResponse({
