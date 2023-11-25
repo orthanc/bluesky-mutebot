@@ -5,11 +5,13 @@
   "scripts": {
     "lint": "eslint src",
     "prettier": "prettier 'src/**/*.ts' --write",
-    "tailwind:build": "rm public/mutebot.*.css && tailwindcss -i ./src/input.css -o ./public/mutebot.min.css --minify && mv public/mutebot.min.css \"public/mutebot.$(sha256sum public/mutebot.min.css | awk '{ print $1 }').css\"",
+    "tailwind:build": "rm -f public/mutebot.*.css && tailwindcss -i ./src/input.css -o ./public/mutebot.min.css --minify && mv public/mutebot.min.css \"public/mutebot.$(sha256sum public/mutebot.min.css | awk '{ print $1 }').css\"",
     "tailwind:watch": "tailwindcss -i ./src/input.css -o ./public/mutebot.dev.css --watch",
     "start:serverless": "serverless offline start --reloadHandler",
     "start": "run-p tailwind:watch start:serverless",
-    "deploy:public": "npm run tailwind:build && eval \"$(node setEnv.js)\" && aws s3 sync public/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/static/ --cache-control 'max-age=31536000' --exclude 'mutebot.dev.css'"
+    "deploy:public": "npm run tailwind:build && eval \"$(node setEnv.js)\" && aws s3 sync public/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/static/ --cache-control 'max-age=31536000' --exclude 'mutebot.dev.css'",
+    "deploy:development": "TARGET_STAGE=development npm run deploy:public && serverless deploy --stage development",
+    "deploy:production": "TARGET_STAGE=production npm run deploy:public && serverless deploy --stage production",
   },
   "author": "",
   "license": "UNLICENSED",
