@@ -25,6 +25,7 @@ import cookie from 'cookie';
 import { Login } from './Login';
 import { Body } from './Body';
 import { Content } from './Content';
+import { AddMuteWord, MuteWord } from './MuteWords.';
 
 export type WebEvent = APIGatewayProxyEventV2;
 
@@ -187,7 +188,7 @@ const createHttpResponse = ({
   headers,
   wholePage,
 }: {
-  node?: preact.VNode;
+  node?: preact.VNode | Array<preact.VNode>;
   headers?: APIGatewayProxyStructuredResultV2['headers'];
   wholePage?: boolean;
 }): APIGatewayProxyResultV2 => ({
@@ -199,7 +200,10 @@ const createHttpResponse = ({
   body:
     node == null
       ? undefined
-      : (wholePage ? '<!DOCTYPE html>' : '') + render(node),
+      : (wholePage ? '<!DOCTYPE html>' : '') +
+        (Array.isArray(node)
+          ? node.map((n) => render(n)).join('\n\n')
+          : render(node)),
 });
 
 export const renderResponse = async (
@@ -267,22 +271,20 @@ export const renderResponse = async (
         }>;
         if (body.muteWord) {
           await addMuteWord(session.subscriberDid, body.muteWord);
+          return createHttpResponse({
+            node: [
+              <MuteWord word={body.muteWord} />,
+              <AddMuteWord oob={true} />,
+            ],
+          });
         }
         if (body.unmuteWord) {
           await deleteMuteWord(session.subscriberDid, body.unmuteWord);
         }
-        const muteWords = await getMuteWords(session.subscriberDid);
-
-        return createHttpResponse({
-          node: (
-            <Content>
-              <MuteWordsContent
-                handle={session.subscriberHandle}
-                muteWords={muteWords}
-              />
-            </Content>
-          ),
-        });
+        return {
+          statusCode: 200,
+          body: '',
+        };
       }
       case 'POST /logout': {
         return createHttpResponse({

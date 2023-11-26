@@ -14,7 +14,7 @@ module.exports = {
   },
   plugins: [
     plugin(function ({ addVariant }) {
-      addVariant('htmx-request', '.htmx-request &');
+      addVariant('htmx-request', ['.htmx-request &', '.htmx-request&']);
     }),
   ],
 };
