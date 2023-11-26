@@ -11,7 +11,7 @@
     "start": "run-p tailwind:watch start:serverless",
     "deploy:public": "npm run tailwind:build && eval \"$(node setEnv.js)\" && aws s3 sync public/ s3://${CONTENT_BUCKET}/bluesky-feeds-web/${TARGET_STAGE}/static/ --cache-control 'max-age=31536000' --exclude 'mutebot.dev.css'",
     "deploy:development": "TARGET_STAGE=development npm run deploy:public && serverless deploy --stage development",
-    "deploy:production": "TARGET_STAGE=production npm run deploy:public && serverless deploy --stage production",
+    "deploy:production": "TARGET_STAGE=production npm run deploy:public && serverless deploy --stage production"
   },
   "author": "",
   "license": "UNLICENSED",
