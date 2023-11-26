@@ -56,7 +56,6 @@ custom:
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
   consoleSessionsTable: ${self:service}-${self:provider.stage}-console-sessions
-  externalResolveQueue: ${self:service}-${self:provider.stage}-external-resolve.fifo
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
@@ -191,7 +190,6 @@ functions:
     environment:
       FOLLOWING_FEED_URL: ${self:custom.followingFeedUrl}
       BETA_FOLLOWING_FEED_URL: ${self:custom.betaFollowingFeedUrl}
-      EXTERNAL_RESOLVE_QUEUE_URL: !Ref ExternalResolveQueue
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
@@ -247,47 +245,6 @@ functions:
           - dynamodb:BatchWriteItem
         Resource:
           - !GetAtt PostsTable.Arn
-
-  readFirehose-rslvPosts:
-    handler: ./src/endpoints/readFirehose/resolvePosts.handler
-    memorySize: 512
-    events:
-      - stream:
-          type: dynamodb
-          arn:
-            Fn::GetAtt: [PostsTable, StreamArn]
-          startingPosition: LATEST
-          batchSize: 1
-          maximumRetryAttempts: 5
-          filterPatterns:
-            - eventName: [INSERT]
-              dynamodb:
-                NewImage:
-                  resolvedStatus:
-                    S: [UNRESOLVED]
-      - sqs:
-          arn:
-            Fn::GetAtt: [ExternalResolveQueue, Arn]
-          batchSize: 1
-    environment:
-      EXTERNAL_RESOLVE_QUEUE_URL: !Ref ExternalResolveQueue
-      BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:BatchGetItem
-          - dynamodb:BatchWriteItem
-          - dynamodb:GetItem
-          - dynamodb:PutItem
-          - dynamodb:Query
-        Resource:
-          - !GetAtt PostsTable.Arn
-          - !Sub "${PostsTable.Arn}/*"
-      - Effect: "Allow"
-        Action:
-          - sqs:SendMessage
-        Resource:
-          - !GetAtt ExternalResolveQueue.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
@@ -499,12 +456,6 @@ resources:
         KeySchema:
           - AttributeName: setting
             KeyType: HASH
-
-    ExternalResolveQueue:
-      Type: AWS::SQS::Queue
-      Properties:
-        QueueName: ${self:custom.externalResolveQueue}
-        FifoQueue: True
 
     ConsoleSessionsTable:
       Type: AWS::DynamoDB::Table
