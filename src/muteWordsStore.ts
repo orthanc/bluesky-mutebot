@@ -1,14 +1,9 @@
 import {
-  DeleteCommandInput,
   DynamoDBDocumentClient,
   GetCommand,
-  PutCommand,
-  PutCommandInput,
   QueryCommand,
   QueryCommandOutput,
   TransactWriteCommand,
-  TransactWriteCommandInput,
-  UpdateCommandInput,
 } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
@@ -136,76 +131,4 @@ export const addMuteWord = async (subscriberDid: string, muteWord: string) => {
       ],
     })
   );
-};
-
-export const updateMuteWords = async (
-  operations: Array<MuteWordsOperation>
-) => {
-  let remainingOperations = operations;
-  while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 50);
-    remainingOperations = remainingOperations.slice(50);
-    const writeCommand: TransactWriteCommandInput = {
-      TransactItems: batch.flatMap(
-        (
-          operation
-        ): Array<
-          | { Put: PutCommandInput }
-          | { Delete: DeleteCommandInput }
-          | { Update: UpdateCommandInput & { UpdateExpression: string } }
-        > =>
-          operation.operation === 'mute'
-            ? [
-                {
-                  Put: {
-                    TableName: MUTE_WORDS_TABLE,
-                    Item: {
-                      subscriberDid: operation.subscriberDid,
-                      muteWord: operation.word,
-                    },
-                  },
-                },
-                {
-                  Update: {
-                    TableName: USER_SETTINGS_TABLE,
-                    Key: {
-                      subscriberDid: operation.subscriberDid,
-                    },
-                    UpdateExpression: 'SET #word = :true',
-                    ExpressionAttributeNames: {
-                      '#word': `mute_${operation.word}`,
-                    },
-                    ExpressionAttributeValues: {
-                      ':true': true,
-                    },
-                  },
-                },
-              ]
-            : [
-                {
-                  Delete: {
-                    TableName: MUTE_WORDS_TABLE,
-                    Key: {
-                      subscriberDid: operation.subscriberDid,
-                      muteWord: operation.word,
-                    },
-                  },
-                },
-                {
-                  Update: {
-                    TableName: USER_SETTINGS_TABLE,
-                    Key: {
-                      subscriberDid: operation.subscriberDid,
-                    },
-                    UpdateExpression: 'REMOVE #word',
-                    ExpressionAttributeNames: {
-                      '#word': `mute_${operation.word}`,
-                    },
-                  },
-                },
-              ]
-      ),
-    };
-    await ddbDocClient.send(new TransactWriteCommand(writeCommand));
-  }
 };
