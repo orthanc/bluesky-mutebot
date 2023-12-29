@@ -18,7 +18,7 @@ provider:
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     FOLLOWED_BY_COUNT_TABLE: ${self:custom.followedByCountTable}
-    MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
+    USER_SETTINGS_TABLE: ${self:custom.userSettingsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
     CONSOLE_SESSIONS_TABLE: ${self:custom.consoleSessionsTable}
@@ -52,7 +52,7 @@ custom:
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   followedByCountTable: ${self:service}-${self:provider.stage}-followed-by-count
-  muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
+  userSettingsTable: ${self:service}-${self:provider.stage}-user-settings
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
   consoleSessionsTable: ${self:service}-${self:provider.stage}-console-sessions
@@ -110,11 +110,10 @@ functions:
         Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
       - Effect: "Allow"
         Action:
-          - dynamodb:Query
-          - dynamodb:PutItem
-          - dynamodb:DeleteItem
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
         Resource:
-          - !GetAtt MuteWordsTable.Arn
+          - !GetAtt UserSettingsTable.Arn
 
   bff-approval-listener:
     handler: ./src/endpoints/bff/approvalListener.handler
@@ -149,9 +148,9 @@ functions:
           - !GetAtt ConsoleSessionsTable.Arn
       - Effect: "Allow"
         Action:
-          - dynamodb:Query
+          - dynamodb:GetItem
         Resource:
-          - !GetAtt MuteWordsTable.Arn
+          - !GetAtt UserSettingsTable.Arn
 
   rotate-signing-key:
     handler: ./src/endpoints/rotate-signing-key/index.handler
@@ -197,6 +196,7 @@ functions:
           - dynamodb:GetItem
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
+          - !GetAtt UserSettingsTable.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:BatchGetItem
@@ -206,7 +206,6 @@ functions:
         Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt MuteWordsTable.Arn
           - !Sub "${PostsTable.Arn}/*"
       - Effect: "Allow"
         Action:
@@ -429,21 +428,17 @@ resources:
           AttributeName: expiresAt
           Enabled: True
 
-    MuteWordsTable:
+    UserSettingsTable:
       Type: AWS::DynamoDB::Table
       Properties:
-        TableName: ${self:custom.muteWordsTable}
+        TableName: ${self:custom.userSettingsTable}
         AttributeDefinitions:
           - AttributeName: subscriberDid
-            AttributeType: S
-          - AttributeName: muteWord
             AttributeType: S
         BillingMode: PAY_PER_REQUEST
         KeySchema:
           - AttributeName: subscriberDid
             KeyType: HASH
-          - AttributeName: muteWord
-            KeyType: RANGE
 
     AppStatusTable:
       Type: AWS::DynamoDB::Table

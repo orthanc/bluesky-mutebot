@@ -1,15 +1,17 @@
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
-  PutCommand,
+  GetCommand,
   QueryCommand,
   QueryCommandOutput,
   TransactWriteCommand,
-  TransactWriteCommandInput,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
 const ddbDocClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+const USER_SETTINGS_TABLE = process.env.USER_SETTINGS_TABLE as string;
 
 export type MuteWordsOperation = {
   operation: 'mute' | 'unmute';
@@ -20,86 +22,53 @@ export type MuteWordsOperation = {
 export const getMuteWords = async (
   subscriberDid: string
 ): Promise<Array<string>> => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
-  let ExclusiveStartKey: Record<string, string> | undefined = undefined;
-  const muteWords: Array<string> = [];
-  do {
-    const result: QueryCommandOutput = await ddbDocClient.send(
-      new QueryCommand({
-        TableName,
-        KeyConditionExpression: 'subscriberDid = :subscriberDid',
-        ExpressionAttributeValues: {
-          ':subscriberDid': subscriberDid,
-        },
-        ExclusiveStartKey,
-      })
-    );
-    (ExclusiveStartKey = result.LastEvaluatedKey),
-      result.Items?.map(({ muteWord }) => muteWords.push(muteWord));
-  } while (ExclusiveStartKey != null);
-  return muteWords;
+  const result = await ddbDocClient.send(
+    new GetCommand({
+      TableName: USER_SETTINGS_TABLE,
+      Key: {
+        subscriberDid,
+      },
+    })
+  );
+  if (result.Item == null) return [];
+  return Object.entries(result.Item)
+    .filter(([key]) => key.startsWith('mute_'))
+    .map(([key]) => key.substring('mute_'.length))
+    .sort();
 };
 
 export const deleteMuteWord = async (
   subscriberDid: string,
   muteWord: string
 ) => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
   await ddbDocClient.send(
-    new DeleteCommand({
-      TableName,
+    new UpdateCommand({
+      TableName: USER_SETTINGS_TABLE,
       Key: {
         subscriberDid,
-        muteWord,
+      },
+      UpdateExpression: 'REMOVE #word',
+      ExpressionAttributeNames: {
+        '#word': `mute_${muteWord}`,
       },
     })
   );
 };
 
 export const addMuteWord = async (subscriberDid: string, muteWord: string) => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
   await ddbDocClient.send(
-    new PutCommand({
-      TableName,
-      Item: {
+    new UpdateCommand({
+      TableName: USER_SETTINGS_TABLE,
+      Key: {
         subscriberDid,
-        muteWord: muteWord.toLowerCase().trim(),
+      },
+      UpdateExpression: 'SET #word = :true',
+      ExpressionAttributeNames: {
+        '#word': `mute_${muteWord}`,
+      },
+      ExpressionAttributeValues: {
+        ':true': true,
       },
     })
   );
-};
-
-export const updateMuteWords = async (
-  operations: Array<MuteWordsOperation>
-) => {
-  const TableName = process.env.MUTE_WORDS_TABLE as string;
-  let remainingOperations = operations;
-  while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 100);
-    remainingOperations = remainingOperations.slice(100);
-    const writeCommand: TransactWriteCommandInput = {
-      TransactItems: batch.map((operation) =>
-        operation.operation === 'mute'
-          ? {
-              Put: {
-                TableName,
-                Item: {
-                  subscriberDid: operation.subscriberDid,
-                  muteWord: operation.word,
-                },
-              },
-            }
-          : {
-              Delete: {
-                TableName,
-                Key: {
-                  subscriberDid: operation.subscriberDid,
-                  muteWord: operation.word,
-                },
-              },
-            }
-      ),
-    };
-    await ddbDocClient.send(new TransactWriteCommand(writeCommand));
-  }
 };
