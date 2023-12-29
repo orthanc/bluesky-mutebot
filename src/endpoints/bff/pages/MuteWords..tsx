@@ -65,6 +65,7 @@ export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
       hx-swap="delete"
     >
       <ul className="rounded-lg border-slate-300 border bg-slate-50 dark:bg-slate-950">
+        <li className="hidden" />
         {muteWords.map((word) => (
           <MuteWord word={word} />
         ))}
