@@ -18,7 +18,6 @@ provider:
     SYNC_SUBSCRIBER_QUEUE_TABLE: ${self:custom.syncSubscriberQueueTable}
     SUBSCRIBER_FOLLOWING_TABLE: ${self:custom.subscriberFollowingTable}
     FOLLOWED_BY_COUNT_TABLE: ${self:custom.followedByCountTable}
-    MUTE_WORDS_TABLE: ${self:custom.muteWordsTable}
     USER_SETTINGS_TABLE: ${self:custom.userSettingsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
