@@ -52,7 +52,6 @@ custom:
   syncSubscriberQueueTable: ${self:service}-${self:provider.stage}-sync-subscriber-queue
   subscriberFollowingTable: ${self:service}-${self:provider.stage}-subscriber-following
   followedByCountTable: ${self:service}-${self:provider.stage}-followed-by-count
-  muteWordsTable: ${self:service}-${self:provider.stage}-mute-words
   userSettingsTable: ${self:service}-${self:provider.stage}-user-settings
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
@@ -111,13 +110,9 @@ functions:
         Resource: ${self:custom.ssmEnvironmentBaseArn}/access-token-signing-key/
       - Effect: "Allow"
         Action:
-          - dynamodb:Query
           - dynamodb:GetItem
-          - dynamodb:PutItem
-          - dynamodb:DeleteItem
           - dynamodb:UpdateItem
         Resource:
-          - !GetAtt MuteWordsTable.Arn
           - !GetAtt UserSettingsTable.Arn
 
   bff-approval-listener:
@@ -154,9 +149,7 @@ functions:
       - Effect: "Allow"
         Action:
           - dynamodb:GetItem
-          - dynamodb:Query
         Resource:
-          - !GetAtt MuteWordsTable.Arn
           - !GetAtt UserSettingsTable.Arn
 
   rotate-signing-key:
@@ -213,7 +206,6 @@ functions:
         Action:
           - dynamodb:Query
         Resource:
-          - !GetAtt MuteWordsTable.Arn
           - !Sub "${PostsTable.Arn}/*"
       - Effect: "Allow"
         Action:
@@ -435,22 +427,6 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: True
-
-    MuteWordsTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${self:custom.muteWordsTable}
-        AttributeDefinitions:
-          - AttributeName: subscriberDid
-            AttributeType: S
-          - AttributeName: muteWord
-            AttributeType: S
-        BillingMode: PAY_PER_REQUEST
-        KeySchema:
-          - AttributeName: subscriberDid
-            KeyType: HASH
-          - AttributeName: muteWord
-            KeyType: RANGE
 
     UserSettingsTable:
       Type: AWS::DynamoDB::Table
