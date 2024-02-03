@@ -259,7 +259,7 @@ const filterFeedContentBeta = async (
     totalPosts: Object.keys(loadedPosts).length,
   });
 
-  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
+  let filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
     (postRef) => {
       const post =
         loadedPosts[
@@ -325,6 +325,32 @@ const filterFeedContentBeta = async (
       return true;
     }
   );
+
+  // Determine the highest index that each post and external link is
+  const firstSeenPost: Record<string, number> = {};
+  const firstSeenUrl: Record<string, number> = {};
+  filteredFeedContent.forEach((postRef, index) => {
+    const postUri =
+      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+    firstSeenPost[postUri] = index;
+    const post = loadedPosts[postUri];
+    if (post?.type === 'post' && post.externalUri != null) {
+      firstSeenUrl[post.externalUri] = index;
+    }
+  });
+
+  filteredFeedContent = filteredFeedContent.filter((postRef, index) => {
+    const postUri =
+      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+    if (firstSeenPost[postUri] !== index) return false;
+    firstSeenPost[postUri] = index;
+    const post = loadedPosts[postUri];
+    if (post?.type === 'post' && post.externalUri != null) {
+      if (firstSeenUrl[post.externalUri] !== index) return false;
+    }
+    return true;
+  });
+
   if (feedContent.cursor == null) {
     filteredFeedContent.push({
       uri: NO_MORE_POSTS_POST,
