@@ -57,6 +57,7 @@ export const postToPostTableRecord = (
   if (post.record.text != null) {
     textEntries.push(post.record.text as string);
   }
+  let externalDetails: Pick<PostEntry, 'externalUri'> | undefined = undefined;
   const embed = post.record.embed;
   if (isImageEmbed(embed)) {
     embed.images.forEach((image) => {
@@ -67,6 +68,7 @@ export const postToPostTableRecord = (
   }
   if (isExternalEmbed(embed)) {
     textEntries.push(embed.external.description);
+    externalDetails = { externalUri: embed.external.uri };
   }
   if (isRecordEmbed(embed)) {
     quoteDetails = {
@@ -114,6 +116,7 @@ export const postToPostTableRecord = (
     author: post.author,
     type: 'post',
     expiresAt,
+    ...externalDetails,
     ...quoteDetails,
     ...(isReply
       ? {

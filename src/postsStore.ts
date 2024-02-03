@@ -30,6 +30,7 @@ export type PostEntry = {
   replyParentTextEntries?: Array<string>;
   quotedPostUri?: string;
   quotedPostAuthorDid?: string;
+  externalUri?: string;
   startsWithMention?: true;
   mentionedDids: Array<string>;
   textEntries: Array<string>;
