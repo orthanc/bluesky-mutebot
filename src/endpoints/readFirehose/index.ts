@@ -192,7 +192,10 @@ const processBatch = async (
   const deletesToApply = deletes
     .filter(({ author }) => followByFinder.getFollowedBy(author) != null)
     .map((del) => del.uri);
-  await savePostsBatch(postsToSave, deletesToApply);
+  const notDeletedPostsToSave = postsToSave.filter(
+    (post) => !deletesToApply.includes(post.uri)
+  );
+  await savePostsBatch(notDeletedPostsToSave, deletesToApply);
   return {
     postsSaved,
     repostsSaved,
