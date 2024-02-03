@@ -328,19 +328,35 @@ const filterFeedContentBeta = async (
 
   // Determine the highest index that each post and external link is
   const firstSeenPost: Record<string, number> = {};
-  const firstSeenUrl: Record<string, number> = {};
+  const firstSeenExternal: Record<string, number> = {};
   filteredFeedContent.forEach((postRef, index) => {
     const postUri =
       postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
     firstSeenPost[postUri] = index;
-    firstSeenPost[postUri] = index;
     const post = loadedPosts[postUri];
     if (post?.type === 'post') {
       if (post.externalUri != null) {
-        firstSeenUrl[post.externalUri] = index;
+        firstSeenExternal[post.externalUri] = index;
+      }
+
+      if (post.replyParentUri != null) {
+        const parentPost = loadedPosts[post.replyParentUri];
+        if (parentPost == null || parentPost.type === 'post') {
+          if (parentPost.externalUri != null) {
+            firstSeenExternal[parentPost.externalUri] = index;
+          }
+          if (parentPost.quotedPostUri != null) {
+            firstSeenExternal[parentPost.quotedPostUri] = index;
+          }
+        }
       }
       if (post.quotedPostUri != null) {
-        firstSeenUrl[post.quotedPostUri] = index;
+        const quotedPost = loadedPosts[post.quotedPostUri];
+        if (quotedPost == null || quotedPost.type === 'post') {
+          if (quotedPost.externalUri != null) {
+            firstSeenExternal[quotedPost.externalUri] = index;
+          }
+        }
       }
     }
   });
@@ -348,17 +364,51 @@ const filterFeedContentBeta = async (
   filteredFeedContent = filteredFeedContent.filter((postRef, index) => {
     const postUri =
       postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
-    if (firstSeenPost[postUri] !== index) return false;
-    firstSeenPost[postUri] = index;
+    if (firstSeenPost[postUri] !== index) {
+      console.log('skipping post');
+      return false;
+    }
     const post = loadedPosts[postUri];
     if (post?.type === 'post') {
-      if (post.externalUri != null && firstSeenUrl[post.externalUri] !== index)
-        return false;
       if (
-        post.quotedPostUri != null &&
-        firstSeenUrl[post.quotedPostUri] !== index
-      )
+        post.externalUri != null &&
+        firstSeenExternal[post.externalUri] !== index
+      ) {
+        console.log('skipping external');
         return false;
+      }
+
+      if (post.replyParentUri != null) {
+        const parentPost = loadedPosts[post.replyParentUri];
+        if (parentPost == null || parentPost.type === 'post') {
+          if (
+            parentPost.externalUri != null &&
+            firstSeenExternal[parentPost.externalUri] !== index
+          ) {
+            console.log('skipping parent external');
+            return false;
+          }
+          if (
+            parentPost.quotedPostUri != null &&
+            firstSeenExternal[parentPost.quotedPostUri] !== index
+          ) {
+            console.log('skipping parent quote');
+            return false;
+          }
+        }
+      }
+      if (post.quotedPostUri != null) {
+        const quotedPost = loadedPosts[post.quotedPostUri];
+        if (quotedPost == null || quotedPost.type === 'post') {
+          if (
+            quotedPost.externalUri != null &&
+            firstSeenExternal[quotedPost.externalUri] !== index
+          ) {
+            console.log('skipping quoted external');
+            return false;
+          }
+        }
+      }
     }
     return true;
   });
