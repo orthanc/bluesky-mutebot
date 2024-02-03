@@ -333,9 +333,15 @@ const filterFeedContentBeta = async (
     const postUri =
       postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
     firstSeenPost[postUri] = index;
+    firstSeenPost[postUri] = index;
     const post = loadedPosts[postUri];
-    if (post?.type === 'post' && post.externalUri != null) {
-      firstSeenUrl[post.externalUri] = index;
+    if (post?.type === 'post') {
+      if (post.externalUri != null) {
+        firstSeenUrl[post.externalUri] = index;
+      }
+      if (post.quotedPostUri != null) {
+        firstSeenUrl[post.quotedPostUri] = index;
+      }
     }
   });
 
@@ -345,8 +351,14 @@ const filterFeedContentBeta = async (
     if (firstSeenPost[postUri] !== index) return false;
     firstSeenPost[postUri] = index;
     const post = loadedPosts[postUri];
-    if (post?.type === 'post' && post.externalUri != null) {
-      if (firstSeenUrl[post.externalUri] !== index) return false;
+    if (post?.type === 'post') {
+      if (post.externalUri != null && firstSeenUrl[post.externalUri] !== index)
+        return false;
+      if (
+        post.quotedPostUri != null &&
+        firstSeenUrl[post.quotedPostUri] !== index
+      )
+        return false;
     }
     return true;
   });
