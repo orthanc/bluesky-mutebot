@@ -231,7 +231,6 @@ functions:
           - dynamodb:PutItem
         Resource:
           - !GetAtt AppStatusTable.Arn
-          - !GetAtt UserFeedTable.Arn
         Condition:
           ForAllValues:StringEquals:
             dynamodb:LeadingKeys:
@@ -248,6 +247,12 @@ functions:
           - dynamodb:BatchWriteItem
         Resource:
           - !GetAtt PostsTable.Arn
+          - !GetAtt UserFeedTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+        Resource:
           - !GetAtt UserFeedTable.Arn
 
   syncSubscriberFollowing:
