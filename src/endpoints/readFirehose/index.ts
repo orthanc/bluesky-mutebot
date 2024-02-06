@@ -197,9 +197,12 @@ const processBatch = async (
   );
   await savePostsBatch(notDeletedPostsToSave, deletesToApply);
   return {
-    postsSaved,
-    repostsSaved,
-    deletesApplied: deletesToApply.length,
+    metrics: {
+      postsSaved,
+      repostsSaved,
+      deletesApplied: deletesToApply.length,
+    },
+    savedPosts: notDeletedPostsToSave,
   };
 };
 
@@ -215,6 +218,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
 
   let operationCount = 0;
   let posts: Record<string, CreateOp<PostRecord | RepostRecord>> = {};
+  const allSavedPosts: Array<PostTableRecord> = [];
   let deletes: Set<DeleteOp> = new Set();
   const start = new Date();
   let postsSaved = 0;
@@ -246,7 +250,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
       }
     }
     if (followedByFinder.shouldResolveDids() || operationCount >= 1000) {
-      const metrics = await processBatch(
+      const { metrics, savedPosts } = await processBatch(
         followedByFinder,
         Object.values(posts),
         Array.from(deletes)
@@ -257,10 +261,11 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
       posts = {};
       deletes = new Set();
       operationCount = 0;
+      allSavedPosts.push(...savedPosts);
     }
   }
   if (operationCount > 0) {
-    const metrics = await processBatch(
+    const { metrics, savedPosts } = await processBatch(
       followedByFinder,
       Object.values(posts),
       Array.from(deletes)
@@ -268,7 +273,32 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
     postsSaved += metrics.postsSaved;
     repostsSaved += metrics.repostsSaved;
     deletesApplied += metrics.deletesApplied;
+    allSavedPosts.push(...savedPosts);
   }
+
+  const postsByFollowedBy = allSavedPosts.reduce<
+    Record<string, Array<PostTableRecord>>
+  >((acc, { followedBy, ...post }) => {
+    if (followedBy != null) {
+      Object.keys(followedBy).forEach((follower) => {
+        const posts = acc[follower] ?? [];
+        acc[follower] = posts;
+        posts.push(post);
+      });
+    }
+    return acc;
+  }, {});
+  console.log({
+    totalSavedPosts: allSavedPosts.length,
+    distinctSubscribers: Object.keys(postsByFollowedBy).length,
+    totalFollowedSize: JSON.stringify(postsByFollowedBy).length,
+  });
+
+  // await Promise.all(
+  //   Object.entries(allPostsByFollowedBy).map(async ([subscriberDid, posts]) =>
+  //     saveToUserFeed(subscriberDid, posts)
+  //   )
+  // );
   console.log(
     `Metrics ${JSON.stringify({
       operationsSkipped,
