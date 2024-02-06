@@ -378,29 +378,25 @@ const filterFeedContentBeta = async (
         return false;
       }
 
-      // if (post.replyParentUri != null) {
-      //   const parentPost = loadedPosts[post.replyParentUri];
-        // I think I want to count the links and quotes from parent posts as they'll probably be shown
-        // but not filter out on the basis of parent poasts as blue sky is already de duplicating those
-      //   if (parentPost == null || parentPost.type === 'post') {
-      //     if (
-      //       parentPost.externalUri != null &&
-      //       firstSeenExternal[parentPost.externalUri] !== index
-      //     ) {
-      //       console.log('skipping parent external');
-      //       console.log(JSON.stringify(parentPost))
-      //       return false;
-      //     }
-      //     if (
-      //       parentPost.quotedPostUri != null &&
-      //       firstSeenExternal[parentPost.quotedPostUri] !== index
-      //     ) {
-      //       console.log('skipping parent quote');
-      //       console.log(JSON.stringify(parentPost))
-      //       return false;
-      //     }
-      //   }
-      // }
+      if (post.replyParentUri != null) {
+        const parentPost = loadedPosts[post.replyParentUri];
+        if (parentPost == null || parentPost.type === 'post') {
+          if (
+            parentPost.externalUri != null &&
+            firstSeenExternal[parentPost.externalUri] !== index
+          ) {
+            console.log('skipping parent external');
+            return false;
+          }
+          if (
+            parentPost.quotedPostUri != null &&
+            firstSeenExternal[parentPost.quotedPostUri] !== index
+          ) {
+            console.log('skipping parent quote');
+            return false;
+          }
+        }
+      }
       if (post.quotedPostUri != null) {
         const quotedPost = loadedPosts[post.quotedPostUri];
         if (quotedPost == null || quotedPost.type === 'post') {

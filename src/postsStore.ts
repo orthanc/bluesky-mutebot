@@ -4,7 +4,6 @@ import {
   BatchWriteCommand,
   BatchWriteCommandOutput,
   DynamoDBDocumentClient,
-  GetCommand,
   PutCommand,
   QueryCommand,
   QueryCommandOutput,
@@ -170,45 +169,6 @@ export const savePostsBatch = async (
     }
   }
   console.log(`Saved ${posts.length} posts and ${deletes.length} deletes`);
-};
-
-export const saveToUserFeed = async (
-  subscriberDid: string,
-  posts: Array<Omit<PostTableRecord, 'followedBy'>>
-) => {
-  const TableName = process.env.USER_FEED_TABLE as string;
-  const existing = await ddbDocClient.send(
-    new GetCommand({
-      TableName,
-      Key: {
-        subscriberDid,
-      },
-    })
-  );
-
-  const existingPosts = (existing.Item?.posts ?? []) as Array<
-    Omit<PostTableRecord, 'followedBy'>
-  >;
-
-  const allPosts = existingPosts
-    .concat(...posts)
-    .sort((a, b) => {
-      if (a.createdAt < b.createdAt) return -1;
-      if (a.createdAt > b.createdAt) return 1;
-      return 0;
-    })
-    .slice(-100);
-
-  await ddbDocClient.send(
-    new PutCommand({
-      TableName,
-      Item: {
-        subscriberDid,
-        posts: allPosts,
-        expiresAt: Math.floor(Date.now() / 1000) + POST_RETENTION_SECONDS,
-      },
-    })
-  );
 };
 
 export const followAuthorsPosts = async (
