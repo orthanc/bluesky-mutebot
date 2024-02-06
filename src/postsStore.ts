@@ -174,7 +174,7 @@ export const savePostsBatch = async (
 
 export const saveToUserFeed = async (
   subscriberDid: string,
-  posts: Array<PostTableRecord>
+  posts: Array<Omit<PostTableRecord, 'followedBy'>>
 ) => {
   const TableName = process.env.USER_FEED_TABLE as string;
   const existing = await ddbDocClient.send(
@@ -325,26 +325,5 @@ export const listFeedFromPosts = async (
     cursor:
       requestCursor == null ? undefined : btoa(JSON.stringify(requestCursor)),
     posts: result,
-  };
-};
-
-export const listFeedFromUserFeedRecord = async (
-  subscriberDid: string
-): Promise<{
-  cursor?: string;
-  posts: Array<PostTableRecord>;
-}> => {
-  const TableName = process.env.USER_FEED_TABLE as string;
-  const result = await ddbDocClient.send(
-    new GetCommand({
-      TableName,
-      Key: {
-        subscriberDid,
-      },
-    })
-  );
-
-  return {
-    posts: (result.Item?.posts ?? []) as Array<PostTableRecord>,
   };
 };
