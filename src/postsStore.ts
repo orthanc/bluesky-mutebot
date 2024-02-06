@@ -323,19 +323,22 @@ export const listFeedFromUserFeedRecord = async (
         ':subscriberDid': subscriberDid,
       },
       ScanIndexForward: false,
+      Limit: 20,
     })
   );
 
-  const posts: Array<PostTableRecord> = [];
+  let posts: Array<PostTableRecord> = [];
   if (result.Items != null) {
     for (const item of result.Items) {
       posts.push(...((item.posts ?? []) as Array<PostTableRecord>));
     }
   }
-  posts.sort((a, b) => {
-    if (a.createdAt < b.createdAt) return -1;
-    if (a.createdAt > b.createdAt) return 1;
-    return 0;
-  });
+  posts = posts
+    .sort((a, b) => {
+      if (a.createdAt < b.createdAt) return 1;
+      if (a.createdAt > b.createdAt) return -1;
+      return 0;
+    })
+    .slice(0, 100);
   return { posts };
 };
