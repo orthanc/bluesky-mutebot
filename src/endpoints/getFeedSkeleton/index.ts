@@ -16,6 +16,7 @@ import {
   PostTableRecord,
   getPosts,
   listFeedFromPosts,
+  listFeedFromUserFeedRecord,
 } from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
@@ -464,14 +465,29 @@ export const rawHandler = async (
     };
   }
 
-  const [feedContent, following, muteWords] = await Promise.all([
-    listFeedFromPosts(requesterDid, limit, cursor),
+  const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
+
+  const [loadedFeedContent, following, muteWords] = await Promise.all([
+    isBeta
+      ? listFeedFromUserFeedRecord(requesterDid)
+      : listFeedFromPosts(requesterDid, limit, cursor),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
       ? triggerSubscriberSync(requesterDid)
       : Promise.resolve(),
   ]);
+
+  let feedContent: { cursor?: string; posts: Array<PostTableRecord> };
+  if (isBeta && cursor != null) {
+    const startFrom = loadedFeedContent.posts.findIndex(
+      (post) => post.uri === cursor
+    );
+    if (startFrom === -1) feedContent = { posts: [] };
+    else feedContent = { posts: loadedFeedContent.posts.slice(startFrom + 1) };
+  } else {
+    feedContent = loadedFeedContent;
+  }
 
   if (Object.keys(following?.following ?? {}).length === 0) {
     console.log(`Returning First View Post`);
@@ -490,10 +506,15 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await (feed ===
-  process.env.BETA_FOLLOWING_FEED_URL
+  let filteredFeedContent: Array<FeedEntry> = await (isBeta
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
+
+  let nextCursor = loadedFeedContent.cursor;
+  if (isBeta) {
+    nextCursor = filteredFeedContent[limit]?.uri;
+    filteredFeedContent = filteredFeedContent.slice(0, limit);
+  }
   return {
     statusCode: 200,
     body: JSON.stringify({
@@ -508,7 +529,7 @@ export const rawHandler = async (
               },
             }
       ),
-      cursor: feedContent.cursor,
+      cursor: nextCursor,
     }),
     headers: {
       'content-type': 'application/json',

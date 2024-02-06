@@ -332,5 +332,10 @@ export const listFeedFromUserFeedRecord = async (
       posts.push(...((item.posts ?? []) as Array<PostTableRecord>));
     }
   }
+  posts.sort((a, b) => {
+    if (a.createdAt < b.createdAt) return -1;
+    if (a.createdAt > b.createdAt) return 1;
+    return 0;
+  });
   return { posts };
 };
