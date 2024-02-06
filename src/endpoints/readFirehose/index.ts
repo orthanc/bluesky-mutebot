@@ -198,7 +198,7 @@ const processBatch = async (
   );
   await savePostsBatch(notDeletedPostsToSave, deletesToApply);
   const postsByFollowedBy = notDeletedPostsToSave.reduce<
-    Record<string, Array<Omit<PostTableRecord, 'followedBy'>>>
+    Record<string, Array<PostTableRecord>>
   >((acc, { followedBy, ...post }) => {
     if (followedBy != null) {
       Object.keys(followedBy).forEach((follower) => {
@@ -231,10 +231,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
 
   let operationCount = 0;
   let posts: Record<string, CreateOp<PostRecord | RepostRecord>> = {};
-  const allPostsByFollowedBy: Record<
-    string,
-    Array<Omit<PostTableRecord, 'followedBy'>>
-  > = {};
+  const allPostsByFollowedBy: Record<string, Array<PostTableRecord>> = {};
   let deletes: Set<DeleteOp> = new Set();
   const start = new Date();
   let postsSaved = 0;
