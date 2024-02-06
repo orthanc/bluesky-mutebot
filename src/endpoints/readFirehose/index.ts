@@ -14,6 +14,7 @@ import {
   POST_RETENTION_SECONDS,
   PostTableRecord,
   savePostsBatch,
+  saveToUserFeed,
 } from '../../postsStore';
 import { postToPostTableRecord } from './postToPostTableRecord';
 
@@ -294,11 +295,15 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
     totalFollowedSize: JSON.stringify(postsByFollowedBy).length,
   });
 
-  // await Promise.all(
-  //   Object.entries(allPostsByFollowedBy).map(async ([subscriberDid, posts]) =>
-  //     saveToUserFeed(subscriberDid, posts)
-  //   )
-  // );
+  const now = new Date();
+  const indexedAt = now.toISOString();
+  const expiresAt = Math.floor(now.getTime() / 1000) + POST_RETENTION_SECONDS;
+
+  await Promise.all(
+    Object.entries(postsByFollowedBy).map(async ([subscriberDid, posts]) =>
+      saveToUserFeed(subscriberDid, posts, indexedAt, expiresAt)
+    )
+  );
   console.log(
     `Metrics ${JSON.stringify({
       operationsSkipped,

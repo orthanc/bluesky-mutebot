@@ -171,6 +171,26 @@ export const savePostsBatch = async (
   console.log(`Saved ${posts.length} posts and ${deletes.length} deletes`);
 };
 
+export const saveToUserFeed = async (
+  subscriberDid: string,
+  posts: Array<PostTableRecord>,
+  indexedAt: string,
+  expiresAt: number
+) => {
+  const TableName = process.env.USER_FEED_TABLE as string;
+  await ddbDocClient.send(
+    new PutCommand({
+      TableName,
+      Item: {
+        subscriberDid,
+        posts,
+        indexedAt,
+        expiresAt,
+      },
+    })
+  );
+};
+
 export const followAuthorsPosts = async (
   subscriberDid: string,
   author: string
@@ -286,4 +306,31 @@ export const listFeedFromPosts = async (
       requestCursor == null ? undefined : btoa(JSON.stringify(requestCursor)),
     posts: result,
   };
+};
+
+export const listFeedFromUserFeedRecord = async (
+  subscriberDid: string
+): Promise<{
+  cursor?: string;
+  posts: Array<PostTableRecord>;
+}> => {
+  const TableName = process.env.USER_FEED_TABLE as string;
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      KeyConditionExpression: 'subscriberDid = :subscriberDid',
+      ExpressionAttributeValues: {
+        ':subscriberDid': subscriberDid,
+      },
+      ScanIndexForward: false,
+    })
+  );
+
+  const posts: Array<PostTableRecord> = [];
+  if (result.Items != null) {
+    for (const item of result.Items) {
+      posts.push(...((item.posts ?? []) as Array<PostTableRecord>));
+    }
+  }
+  return { posts };
 };
