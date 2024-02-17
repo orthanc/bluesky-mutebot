@@ -299,11 +299,7 @@ export const handler = async (_: unknown, context: Context): Promise<void> => {
   const indexedAt = now.toISOString();
   const expiresAt = Math.floor(now.getTime() / 1000) + POST_RETENTION_SECONDS;
 
-  await Promise.all(
-    Object.entries(postsByFollowedBy).map(async ([subscriberDid, posts]) =>
-      saveToUserFeed(subscriberDid, posts, indexedAt, expiresAt)
-    )
-  );
+  await saveToUserFeed(postsByFollowedBy, indexedAt, expiresAt);
   console.log(
     `Metrics ${JSON.stringify({
       operationsSkipped,

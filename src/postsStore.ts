@@ -172,23 +172,52 @@ export const savePostsBatch = async (
 };
 
 export const saveToUserFeed = async (
-  subscriberDid: string,
-  posts: Array<PostTableRecord>,
+  newPostsBySubscriber: Record<string, Array<PostTableRecord>>,
   indexedAt: string,
   expiresAt: number
 ) => {
   const TableName = process.env.USER_FEED_TABLE as string;
-  await ddbDocClient.send(
-    new PutCommand({
-      TableName,
-      Item: {
-        subscriberDid,
-        posts,
-        indexedAt,
-        expiresAt,
+  let operations = Object.entries(newPostsBySubscriber).map(
+    ([subscriberDid, posts]): {
+      PutRequest: { Item: Record<string, unknown> };
+    } => ({
+      PutRequest: {
+        Item: {
+          subscriberDid,
+          posts,
+          indexedAt,
+          expiresAt,
+        },
       },
     })
   );
+  while (operations.length > 0) {
+    const promises: Array<Promise<BatchWriteCommandOutput>> = [];
+    while (operations.length > 0) {
+      const batch = operations.slice(0, 25);
+      operations = operations.slice(25);
+
+      promises.push(
+        queue.add(async () => {
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
+        })
+      );
+    }
+    for (const result of await Promise.all(promises)) {
+      const unprocessedItems = result.UnprocessedItems?.[TableName];
+      if (unprocessedItems != null) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        operations.push(...unprocessedItems);
+      }
+    }
+  }
 };
 
 export const followAuthorsPosts = async (
