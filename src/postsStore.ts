@@ -4,7 +4,6 @@ import {
   BatchWriteCommand,
   BatchWriteCommandOutput,
   DynamoDBDocumentClient,
-  PutCommand,
   QueryCommand,
   QueryCommandOutput,
   TransactWriteCommand,
@@ -55,24 +54,6 @@ export type FeedEntry = Pick<
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
-export const getPostsForExternalResolve = async (
-  limit: number
-): Promise<Array<PostTableRecord>> => {
-  const TableName = process.env.POSTS_TABLE as string;
-  const result = await ddbDocClient.send(
-    new QueryCommand({
-      TableName,
-      IndexName: 'ByResolvedStatusAndCreatedAt',
-      KeyConditionExpression: 'resolvedStatus = :externalResolve',
-      ExpressionAttributeValues: {
-        ':externalResolve': 'EXTERNAL_RESOLVE',
-      },
-      Limit: limit,
-    })
-  );
-  return (result.Items ?? []) as Array<PostTableRecord>;
-};
-
 export const getPosts = async (
   postUris: Array<string>
 ): Promise<Record<string, PostTableRecord>> => {
@@ -105,16 +86,6 @@ export const getPosts = async (
     }
   }
   return result;
-};
-
-export const savePost = async (post: PostTableRecord) => {
-  const TableName = process.env.POSTS_TABLE as string;
-  await ddbDocClient.send(
-    new PutCommand({
-      TableName,
-      Item: post,
-    })
-  );
 };
 
 export const savePostsBatch = async (
@@ -169,6 +140,55 @@ export const savePostsBatch = async (
     }
   }
   console.log(`Saved ${posts.length} posts and ${deletes.length} deletes`);
+};
+
+export const saveToUserFeed = async (
+  newPostsBySubscriber: Record<string, Array<PostTableRecord>>,
+  indexedAt: string,
+  expiresAt: number
+) => {
+  const TableName = process.env.USER_FEED_TABLE as string;
+  let operations = Object.entries(newPostsBySubscriber).map(
+    ([subscriberDid, posts]): {
+      PutRequest: { Item: Record<string, unknown> };
+    } => ({
+      PutRequest: {
+        Item: {
+          subscriberDid,
+          posts,
+          indexedAt,
+          expiresAt,
+        },
+      },
+    })
+  );
+  while (operations.length > 0) {
+    const promises: Array<Promise<BatchWriteCommandOutput>> = [];
+    while (operations.length > 0) {
+      const batch = operations.slice(0, 25);
+      operations = operations.slice(25);
+
+      promises.push(
+        queue.add(async () => {
+          return await ddbDocClient.send(
+            new BatchWriteCommand({
+              RequestItems: {
+                [TableName]: batch,
+              },
+            })
+          );
+        })
+      );
+    }
+    for (const result of await Promise.all(promises)) {
+      const unprocessedItems = result.UnprocessedItems?.[TableName];
+      if (unprocessedItems != null) {
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        operations.push(...unprocessedItems);
+      }
+    }
+  }
 };
 
 export const followAuthorsPosts = async (
@@ -286,4 +306,39 @@ export const listFeedFromPosts = async (
       requestCursor == null ? undefined : btoa(JSON.stringify(requestCursor)),
     posts: result,
   };
+};
+
+export const listFeedFromUserFeedRecord = async (
+  subscriberDid: string
+): Promise<{
+  cursor?: string;
+  posts: Array<PostTableRecord>;
+}> => {
+  const TableName = process.env.USER_FEED_TABLE as string;
+  const result = await ddbDocClient.send(
+    new QueryCommand({
+      TableName,
+      KeyConditionExpression: 'subscriberDid = :subscriberDid',
+      ExpressionAttributeValues: {
+        ':subscriberDid': subscriberDid,
+      },
+      ScanIndexForward: false,
+      Limit: 20,
+    })
+  );
+
+  let posts: Array<PostTableRecord> = [];
+  if (result.Items != null) {
+    for (const item of result.Items) {
+      posts.push(...((item.posts ?? []) as Array<PostTableRecord>));
+    }
+  }
+  posts = posts
+    .sort((a, b) => {
+      if (a.createdAt < b.createdAt) return 1;
+      if (a.createdAt > b.createdAt) return -1;
+      return 0;
+    })
+    .slice(0, 100);
+  return { posts };
 };

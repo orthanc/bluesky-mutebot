@@ -16,6 +16,7 @@ import {
   PostTableRecord,
   getPosts,
   listFeedFromPosts,
+  listFeedFromUserFeedRecord,
 } from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
@@ -245,16 +246,12 @@ const filterFeedContentBeta = async (
       }
     }
   });
-  const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  Object.assign(loadedPosts, loadedReferencedPosts);
-  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
     const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
   console.log({
     feedPosts: feedContent.posts.length,
-    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
@@ -377,26 +374,27 @@ const filterFeedContentBeta = async (
         console.log('skipping external');
         return false;
       }
-
-      if (post.replyParentUri != null) {
-        const parentPost = loadedPosts[post.replyParentUri];
-        if (parentPost == null || parentPost.type === 'post') {
-          if (
-            parentPost.externalUri != null &&
-            firstSeenExternal[parentPost.externalUri] !== index
-          ) {
-            console.log('skipping parent external');
-            return false;
-          }
-          if (
-            parentPost.quotedPostUri != null &&
-            firstSeenExternal[parentPost.quotedPostUri] !== index
-          ) {
-            console.log('skipping parent quote');
-            return false;
-          }
-        }
-      }
+      // I think I want to count the links and quotes from parent posts as they'll probably be shown
+      // but not filter out on the basis of parent poasts as blue sky is already de duplicating those
+      // if (post.replyParentUri != null) {
+      //   const parentPost = loadedPosts[post.replyParentUri];
+      //   if (parentPost == null || parentPost.type === 'post') {
+      //     if (
+      //       parentPost.externalUri != null &&
+      //       firstSeenExternal[parentPost.externalUri] !== index
+      //     ) {
+      //       console.log('skipping parent external');
+      //       return false;
+      //     }
+      //     if (
+      //       parentPost.quotedPostUri != null &&
+      //       firstSeenExternal[parentPost.quotedPostUri] !== index
+      //     ) {
+      //       console.log('skipping parent quote');
+      //       return false;
+      //     }
+      //   }
+      // }
       if (post.quotedPostUri != null) {
         const quotedPost = loadedPosts[post.quotedPostUri];
         if (quotedPost == null || quotedPost.type === 'post') {
@@ -463,14 +461,29 @@ export const rawHandler = async (
     };
   }
 
-  const [feedContent, following, muteWords] = await Promise.all([
-    listFeedFromPosts(requesterDid, limit, cursor),
+  const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
+
+  const [loadedFeedContent, following, muteWords] = await Promise.all([
+    isBeta
+      ? listFeedFromUserFeedRecord(requesterDid)
+      : listFeedFromPosts(requesterDid, limit, cursor),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
       ? triggerSubscriberSync(requesterDid)
       : Promise.resolve(),
   ]);
+
+  let feedContent: { cursor?: string; posts: Array<PostTableRecord> };
+  if (isBeta && cursor != null) {
+    const startFrom = loadedFeedContent.posts.findIndex(
+      (post) => post.uri === cursor
+    );
+    if (startFrom === -1) feedContent = { posts: [] };
+    else feedContent = { posts: loadedFeedContent.posts.slice(startFrom + 1) };
+  } else {
+    feedContent = loadedFeedContent;
+  }
 
   if (Object.keys(following?.following ?? {}).length === 0) {
     console.log(`Returning First View Post`);
@@ -489,10 +502,15 @@ export const rawHandler = async (
     };
   }
 
-  const filteredFeedContent = await (feed ===
-  process.env.BETA_FOLLOWING_FEED_URL
+  let filteredFeedContent: Array<FeedEntry> = await (isBeta
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
+
+  let nextCursor = loadedFeedContent.cursor;
+  if (isBeta) {
+    nextCursor = filteredFeedContent[limit]?.uri;
+    filteredFeedContent = filteredFeedContent.slice(0, limit);
+  }
   return {
     statusCode: 200,
     body: JSON.stringify({
@@ -507,7 +525,7 @@ export const rawHandler = async (
               },
             }
       ),
-      cursor: feedContent.cursor,
+      cursor: nextCursor,
     }),
     headers: {
       'content-type': 'application/json',

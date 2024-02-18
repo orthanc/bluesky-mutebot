@@ -21,6 +21,7 @@ provider:
     USER_SETTINGS_TABLE: ${self:custom.userSettingsTable}
     APP_STATUS_TABLE: ${self:custom.appStatusTable}
     POSTS_TABLE: ${self:custom.postsTable}
+    USER_FEED_TABLE: ${self:custom.userFeedTable}
     CONSOLE_SESSIONS_TABLE: ${self:custom.consoleSessionsTable}
     # WEBSOCKET_ENDPOINT: https://${self:custom.customDomain.websocket.domainName}
     BLUESKY_SERVICE_IDENTIFIER: ${self:custom.blueskyAuth.identifier}
@@ -55,6 +56,7 @@ custom:
   userSettingsTable: ${self:service}-${self:provider.stage}-user-settings
   appStatusTable: ${self:service}-${self:provider.stage}-app-status
   postsTable: ${self:service}-${self:provider.stage}-posts
+  userFeedTable: ${self:service}-${self:provider.stage}-user-feed
   consoleSessionsTable: ${self:service}-${self:provider.stage}-console-sessions
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
@@ -207,6 +209,7 @@ functions:
           - dynamodb:Query
         Resource:
           - !Sub "${PostsTable.Arn}/*"
+          - !GetAtt UserFeedTable.Arn
       - Effect: "Allow"
         Action:
           - dynamodb:PutItem
@@ -241,9 +244,11 @@ functions:
           - !GetAtt FollowedByCountTable.Arn
       - Effect: "Allow"
         Action:
+          - dynamodb:PutItem
           - dynamodb:BatchWriteItem
         Resource:
           - !GetAtt PostsTable.Arn
+          - !GetAtt UserFeedTable.Arn
 
   syncSubscriberFollowing:
     handler: ./src/endpoints/syncSubscriberFollowing/index.handler
@@ -424,6 +429,25 @@ resources:
                 - repostedPostUri
         StreamSpecification:
           StreamViewType: NEW_IMAGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: True
+
+    UserFeedTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.userFeedTable}
+        AttributeDefinitions:
+          - AttributeName: subscriberDid
+            AttributeType: S
+          - AttributeName: indexedAt
+            AttributeType: S
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: subscriberDid
+            KeyType: HASH
+          - AttributeName: indexedAt
+            KeyType: RANGE
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: True
