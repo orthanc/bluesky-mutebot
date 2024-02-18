@@ -5,8 +5,6 @@ import { CreateOp, DeleteOp, ids } from './firehoseSubscription/subscribe';
 import type { Record as PostRecord } from '@atproto/api/dist/client/types/app/bsky/feed/post';
 import type { Record as RepostRecord } from '@atproto/api/dist/client/types/app/bsky/feed/repost';
 import {
-  AggregateListRecord,
-  batchGetAggregateListRecord,
   batchGetFollowedByCountRecords,
   getDidPrefix,
 } from '../../followingStore';
@@ -25,60 +23,6 @@ interface FollowedByFinder {
   didEncountered: (authorDid: string) => void;
   isKnownNotFollowed: (authorDid: string) => boolean;
   getFollowedBy: (authorDid: string) => Record<string, true> | undefined;
-}
-
-class AggregateFollowedByFinder {
-  private readonly resolvedDids: Record<string, AggregateListRecord | false> =
-    {};
-  private readonly didsToResolve: Set<string> = new Set();
-  private readonly followedBy: Record<string, Record<string, true> | false> =
-    {};
-
-  uniqueResolves() {
-    return Object.keys(this.resolvedDids).length;
-  }
-
-  shouldResolveDids(): boolean {
-    return this.didsToResolve.size >= 100;
-  }
-
-  async resolveDids() {
-    const didsToResolve = Array.from(this.didsToResolve);
-    this.didsToResolve.clear();
-    const newlyResolvedDids = await batchGetAggregateListRecord(didsToResolve);
-    didsToResolve.forEach(
-      (did) => (this.resolvedDids[did] = newlyResolvedDids[did] ?? false)
-    );
-  }
-
-  didEncountered(authorDid: string) {
-    if (this.resolvedDids[authorDid] === undefined) {
-      this.didsToResolve.add(authorDid);
-    }
-  }
-
-  isKnownNotFollowed(authorDid: string): boolean {
-    return this.resolvedDids[authorDid] === false;
-  }
-
-  getFollowedBy(authorDid: string): Record<string, true> | undefined {
-    let followedBy = this.followedBy[authorDid];
-    if (followedBy === false) return undefined;
-    if (followedBy != null) return followedBy;
-    const followedByRecord = this.resolvedDids[authorDid];
-    if (followedByRecord == null) return undefined;
-    if (followedByRecord && followedByRecord.followedBy > 0) {
-      const followedByEntries = Object.entries(followedByRecord)
-        .filter(([key]) => key.startsWith('followedBy_'))
-        .map(([key]): [string, true] => [key.substring(11), true]);
-      if (followedByEntries.length > 0) {
-        followedBy = Object.fromEntries(followedByEntries);
-      }
-    }
-    this.followedBy[authorDid] = followedBy ?? false;
-
-    return followedBy;
-  }
 }
 
 class FollowedByCountFollowedByFinder {
