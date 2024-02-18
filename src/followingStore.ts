@@ -399,21 +399,6 @@ export const saveUpdates = async (
   }
 };
 
-export const getAggregateListRecord = async (
-  followingDid: string
-): Promise<AggregateListRecord | undefined> => {
-  const result = await ddbDocClient.send(
-    new GetCommand({
-      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
-      Key: {
-        subscriberDid: 'aggregate',
-        qualifier: followingDid,
-      },
-    })
-  );
-  return result.Item as AggregateListRecord | undefined;
-};
-
 export const batchGetFollowedByCountRecords = async (
   didPrefixes: ReadonlyArray<string>
 ): Promise<Record<string, Record<string, true>>> => {
@@ -446,62 +431,6 @@ export const batchGetFollowedByCountRecords = async (
   return records;
 };
 
-export const batchGetAggregateListRecord = async (
-  userDids: ReadonlyArray<string>
-): Promise<Record<string, AggregateListRecord>> => {
-  const TableName = process.env.SUBSCRIBER_FOLLOWING_TABLE as string;
-
-  let keys: Array<Record<string, unknown>> = userDids.map((did) => ({
-    subscriberDid: 'aggregate',
-    qualifier: did,
-  }));
-  const records: Record<string, AggregateListRecord> = {};
-  while (keys.length > 0) {
-    const batch = keys.slice(0, 100);
-    keys = keys.slice(100);
-    const result = await ddbDocClient.send(
-      new BatchGetCommand({
-        RequestItems: {
-          [TableName]: {
-            Keys: batch,
-          },
-        },
-      })
-    );
-    const unprocessedKeys = result.UnprocessedKeys?.[TableName]?.Keys;
-    if (unprocessedKeys != null) {
-      keys.push(...unprocessedKeys);
-    }
-    result.Responses?.[TableName]?.forEach(
-      (item) => (records[item.qualifier] = item as AggregateListRecord)
-    );
-  }
-  return records;
-};
-
-export const recordFollowingEntryId = async (
-  followingDid: string,
-  followingEntryUri: string,
-  followingEntryRid: string
-) => {
-  await ddbDocClient.send(
-    new UpdateCommand({
-      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
-      Key: {
-        subscriberDid: 'aggregate',
-        qualifier: followingDid,
-      },
-      UpdateExpression:
-        'SET followingEntryUri = :followingEntryUri, followingEntryRid = :followingEntryRid',
-      ExpressionAttributeValues: {
-        ':followingEntryUri': followingEntryUri,
-        ':followingEntryRid': followingEntryRid,
-      },
-      ConditionExpression: 'attribute_exists(qualifier)',
-    })
-  );
-};
-
 export const markAggregateListRecordForDeletion = async (
   followingDid: string,
   expiresAt: number
@@ -521,28 +450,4 @@ export const markAggregateListRecordForDeletion = async (
       },
     })
   );
-};
-
-export const listFollowedBy = async (authorDid: string) => {
-  const result: Array<string> = [];
-  let cursor: Record<string, unknown> | undefined = undefined;
-  do {
-    const records: QueryCommandOutput = await ddbDocClient.send(
-      new QueryCommand({
-        TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
-        KeyConditionExpression: 'subscriberDid = :authorDid',
-        ExpressionAttributeValues: {
-          ':authorDid': authorDid,
-        },
-        ExclusiveStartKey: cursor,
-      })
-    );
-    cursor = records.LastEvaluatedKey;
-    (records.Items ?? []).forEach((item) => {
-      if (item.qualifier !== 'subscriber') {
-        result.push(item.qualifier);
-      }
-    });
-  } while (cursor != null);
-  return result;
 };
