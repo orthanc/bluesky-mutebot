@@ -113,16 +113,12 @@ const filterFeedContent = async (
       }
     }
   });
-  const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  Object.assign(loadedPosts, loadedReferencedPosts);
-  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
     const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
   console.log({
     feedPosts: feedContent.posts.length,
-    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
@@ -464,9 +460,7 @@ export const rawHandler = async (
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
 
   const [loadedFeedContent, following, muteWords] = await Promise.all([
-    isBeta
-      ? listFeedFromUserFeedRecord(requesterDid)
-      : listFeedFromPosts(requesterDid, limit, cursor),
+    listFeedFromUserFeedRecord(requesterDid),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
@@ -475,7 +469,7 @@ export const rawHandler = async (
   ]);
 
   let feedContent: { cursor?: string; posts: Array<PostTableRecord> };
-  if (isBeta && cursor != null) {
+  if (cursor != null) {
     const startFrom = loadedFeedContent.posts.findIndex(
       (post) => post.uri === cursor
     );
@@ -506,11 +500,8 @@ export const rawHandler = async (
     ? filterFeedContentBeta(feedContent, following, muteWords)
     : filterFeedContent(feedContent, following, muteWords));
 
-  let nextCursor = loadedFeedContent.cursor;
-  if (isBeta) {
-    nextCursor = filteredFeedContent[limit]?.uri;
-    filteredFeedContent = filteredFeedContent.slice(0, limit);
-  }
+  const nextCursor = filteredFeedContent[limit]?.uri;
+  filteredFeedContent = filteredFeedContent.slice(0, limit);
   return {
     statusCode: 200,
     body: JSON.stringify({
