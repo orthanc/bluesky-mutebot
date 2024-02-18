@@ -8,8 +8,6 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  QueryCommand,
-  QueryCommandOutput,
   ScanCommand,
   ScanCommandOutput,
   TransactWriteCommand,
@@ -35,13 +33,6 @@ export type FollowingUpdate = {
   operation: 'add' | 'remove' | 'self' | 'remove-self';
   following: FollowingEntry;
 };
-
-export type AggregateListRecord = {
-  subscriberDid: 'aggregate';
-  qualifier: string;
-  handle: string;
-  followedBy: number;
-} & Record<`followedBy_${string}`, true>;
 
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
@@ -166,52 +157,6 @@ type UpdateItem = Required<
 > &
   Pick<UpdateCommandInput, 'ExpressionAttributeNames'>;
 
-const buildAddAggregateFollow = (
-  subscriberDid: string,
-  following: string
-): {
-  Update: UpdateItem;
-} => ({
-  Update: {
-    TableName: subscriberFollowingTableName,
-    Key: {
-      subscriberDid: 'aggregate',
-      qualifier: following,
-    },
-    UpdateExpression:
-      'SET #didfollow = :true ADD followedBy :one REMOVE expiresAt',
-    ExpressionAttributeNames: {
-      '#didfollow': `followedBy_${subscriberDid}`,
-    },
-    ExpressionAttributeValues: {
-      ':one': 1,
-      ':true': true,
-    },
-  },
-});
-
-const buildRemoveAggregateFollow = (
-  subscriberDid: string,
-  following: string
-): {
-  Update: UpdateItem;
-} => ({
-  Update: {
-    TableName: subscriberFollowingTableName,
-    Key: {
-      subscriberDid: 'aggregate',
-      qualifier: following,
-    },
-    UpdateExpression: 'ADD followedBy :negOne REMOVE #didfollow',
-    ExpressionAttributeNames: {
-      '#didfollow': `followedBy_${subscriberDid}`,
-    },
-    ExpressionAttributeValues: {
-      ':negOne': -1,
-    },
-  },
-});
-
 const buildAddFollowedBySubscriber = (
   subscriberDid: string,
   following: string
@@ -253,8 +198,8 @@ export const saveUpdates = async (
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 33);
-    remainingOperations = remainingOperations.slice(33);
+    const batch = remainingOperations.slice(0, 49);
+    remainingOperations = remainingOperations.slice(49);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -351,7 +296,6 @@ export const saveUpdates = async (
       });
       followingArray.forEach((following) =>
         commandItems.push(
-          buildAddAggregateFollow(subscriberFollowing.subscriberDid, following),
           buildAddFollowedBySubscriber(
             subscriberFollowing.subscriberDid,
             following
@@ -380,10 +324,6 @@ export const saveUpdates = async (
       });
       followingArray.forEach((following) =>
         commandItems.push(
-          buildRemoveAggregateFollow(
-            subscriberFollowing.subscriberDid,
-            following
-          ),
           buildRemoveFollowedBySubscriber(
             subscriberFollowing.subscriberDid,
             following
@@ -429,25 +369,4 @@ export const batchGetFollowedByCountRecords = async (
     );
   }
   return records;
-};
-
-export const markAggregateListRecordForDeletion = async (
-  followingDid: string,
-  expiresAt: number
-) => {
-  await ddbDocClient.send(
-    new UpdateCommand({
-      TableName: process.env.SUBSCRIBER_FOLLOWING_TABLE as string,
-      Key: {
-        subscriberDid: 'aggregate',
-        qualifier: followingDid,
-      },
-      UpdateExpression: 'SET expiresAt = :expiresAt',
-      ConditionExpression: 'followedBy = :zero',
-      ExpressionAttributeValues: {
-        ':zero': 0,
-        ':expiresAt': expiresAt,
-      },
-    })
-  );
 };

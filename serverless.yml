@@ -286,20 +286,6 @@ functions:
           batchSize: 1
           maximumRetryAttempts: 5
           filterPatterns:
-            - eventName: [INSERT]
-              dynamodb:
-                NewImage:
-                  subscriberDid:
-                    S: [aggregate]
-            - eventName: [MODIFY]
-              dynamodb:
-                NewImage:
-                  subscriberDid:
-                    S: [aggregate]
-                  followedBy:
-                    N: ["0"]
-                  expiresAt:
-                    N: [ { "exists": false } ]
             - eventName: [INSERT, REMOVE]
               dynamodb:
                 Keys:
