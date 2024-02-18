@@ -246,16 +246,12 @@ const filterFeedContentBeta = async (
       }
     }
   });
-  const loadedReferencedPosts = await getPosts(Array.from(postUris));
-  Object.assign(loadedPosts, loadedReferencedPosts);
-  Object.keys(loadedReferencedPosts).forEach((uri) => postUris.delete(uri));
   if (postUris.size > 0) {
     const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
   console.log({
     feedPosts: feedContent.posts.length,
-    locallyResolvedPosts: Object.keys(loadedReferencedPosts).length,
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
