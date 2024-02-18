@@ -14,8 +14,6 @@ import {
   FeedEntry,
   POST_RETENTION_SECONDS,
   PostTableRecord,
-  getPosts,
-  listFeedFromPosts,
   listFeedFromUserFeedRecord,
 } from '../../postsStore';
 import { getMuteWords } from '../../muteWordsStore';
@@ -70,25 +68,22 @@ const resolvePosts = async (
 };
 
 const filterFeedContent = async (
-  feedContent: {
-    cursor?: string;
-    posts: Array<PostTableRecord>;
-  },
+  feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
   muteWords: Array<string>
-): Promise<Array<FeedEntry>> => {
+): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
-  feedContent.posts.forEach((post) => {
+  feedContent.forEach(({ post }) => {
     if (post.type === 'post') {
       loadedPosts[post.uri] = post;
     } else {
       postUris.add(post.repostedPostUri);
     }
   });
-  feedContent.posts.forEach((post) => {
+  feedContent.forEach(({ post }) => {
     if (post.type === 'post') {
       // If it is a reply to a post we don't already have
       if (
@@ -118,13 +113,13 @@ const filterFeedContent = async (
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
   console.log({
-    feedPosts: feedContent.posts.length,
+    feedPosts: feedContent.length,
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
 
-  const filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
-    (postRef) => {
+  const filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
+    feedContent.filter(({ post: postRef }) => {
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -187,37 +182,27 @@ const filterFeedContent = async (
           return false;
       }
       return true;
-    }
-  );
-  if (feedContent.cursor == null) {
-    filteredFeedContent.push({
-      uri: NO_MORE_POSTS_POST,
-      type: 'post',
-    } as FeedEntry);
-  }
+    });
   return filteredFeedContent;
 };
 
 const filterFeedContentBeta = async (
-  feedContent: {
-    cursor?: string;
-    posts: Array<PostTableRecord>;
-  },
+  feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
   muteWords: Array<string>
-): Promise<Array<FeedEntry>> => {
+): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
-  feedContent.posts.forEach((post) => {
+  feedContent.forEach(({ post }) => {
     if (post.type === 'post') {
       loadedPosts[post.uri] = post;
     } else {
       postUris.add(post.repostedPostUri);
     }
   });
-  feedContent.posts.forEach((post) => {
+  feedContent.forEach(({ post }) => {
     if (post.type === 'post') {
       // If it is a reply to a post we don't already have
       if (
@@ -247,13 +232,13 @@ const filterFeedContentBeta = async (
     Object.assign(loadedPosts, externallyResolvedPosts);
   }
   console.log({
-    feedPosts: feedContent.posts.length,
+    feedPosts: feedContent.length,
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
 
-  let filteredFeedContent: Array<FeedEntry> = feedContent.posts.filter(
-    (postRef) => {
+  let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
+    feedContent.filter(({ post: postRef }) => {
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -316,13 +301,12 @@ const filterFeedContentBeta = async (
           return false;
       }
       return true;
-    }
-  );
+    });
 
   // Determine the highest index that each post and external link is
   const firstSeenPost: Record<string, number> = {};
   const firstSeenExternal: Record<string, number> = {};
-  filteredFeedContent.forEach((postRef, index) => {
+  filteredFeedContent.forEach(({ post: postRef }, index) => {
     const postUri =
       postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
     firstSeenPost[postUri] = index;
@@ -354,65 +338,61 @@ const filterFeedContentBeta = async (
     }
   });
 
-  filteredFeedContent = filteredFeedContent.filter((postRef, index) => {
-    const postUri =
-      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
-    if (firstSeenPost[postUri] !== index) {
-      console.log('skipping post');
-      return false;
-    }
-    const post = loadedPosts[postUri];
-    if (post?.type === 'post') {
-      if (
-        post.externalUri != null &&
-        firstSeenExternal[post.externalUri] !== index
-      ) {
-        console.log('skipping external');
+  filteredFeedContent = filteredFeedContent.filter(
+    ({ post: postRef }, index) => {
+      const postUri =
+        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+      if (firstSeenPost[postUri] !== index) {
+        console.log('skipping post');
         return false;
       }
-      // I think I want to count the links and quotes from parent posts as they'll probably be shown
-      // but not filter out on the basis of parent poasts as blue sky is already de duplicating those
-      // if (post.replyParentUri != null) {
-      //   const parentPost = loadedPosts[post.replyParentUri];
-      //   if (parentPost == null || parentPost.type === 'post') {
-      //     if (
-      //       parentPost.externalUri != null &&
-      //       firstSeenExternal[parentPost.externalUri] !== index
-      //     ) {
-      //       console.log('skipping parent external');
-      //       return false;
-      //     }
-      //     if (
-      //       parentPost.quotedPostUri != null &&
-      //       firstSeenExternal[parentPost.quotedPostUri] !== index
-      //     ) {
-      //       console.log('skipping parent quote');
-      //       return false;
-      //     }
-      //   }
-      // }
-      if (post.quotedPostUri != null) {
-        const quotedPost = loadedPosts[post.quotedPostUri];
-        if (quotedPost == null || quotedPost.type === 'post') {
-          if (
-            quotedPost.externalUri != null &&
-            firstSeenExternal[quotedPost.externalUri] !== index
-          ) {
-            console.log('skipping quoted external');
-            return false;
+      const post = loadedPosts[postUri];
+      if (post?.type === 'post') {
+        if (
+          post.externalUri != null &&
+          firstSeenExternal[post.externalUri] !== index
+        ) {
+          console.log('skipping external');
+          return false;
+        }
+        // I think I want to count the links and quotes from parent posts as they'll probably be shown
+        // but not filter out on the basis of parent poasts as blue sky is already de duplicating those
+        // if (post.replyParentUri != null) {
+        //   const parentPost = loadedPosts[post.replyParentUri];
+        //   if (parentPost == null || parentPost.type === 'post') {
+        //     if (
+        //       parentPost.externalUri != null &&
+        //       firstSeenExternal[parentPost.externalUri] !== index
+        //     ) {
+        //       console.log('skipping parent external');
+        //       return false;
+        //     }
+        //     if (
+        //       parentPost.quotedPostUri != null &&
+        //       firstSeenExternal[parentPost.quotedPostUri] !== index
+        //     ) {
+        //       console.log('skipping parent quote');
+        //       return false;
+        //     }
+        //   }
+        // }
+        if (post.quotedPostUri != null) {
+          const quotedPost = loadedPosts[post.quotedPostUri];
+          if (quotedPost == null || quotedPost.type === 'post') {
+            if (
+              quotedPost.externalUri != null &&
+              firstSeenExternal[quotedPost.externalUri] !== index
+            ) {
+              console.log('skipping quoted external');
+              return false;
+            }
           }
         }
       }
+      return true;
     }
-    return true;
-  });
+  );
 
-  if (feedContent.cursor == null) {
-    filteredFeedContent.push({
-      uri: NO_MORE_POSTS_POST,
-      type: 'post',
-    } as FeedEntry);
-  }
   return filteredFeedContent;
 };
 
@@ -459,25 +439,22 @@ export const rawHandler = async (
 
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
 
-  const [loadedFeedContent, following, muteWords] = await Promise.all([
-    listFeedFromUserFeedRecord(requesterDid),
+  let startDate: string | undefined = undefined;
+  let startPostUrl: string | undefined = undefined;
+  if (cursor != null && cursor.startsWith('v2|')) {
+    const parts = cursor.split('|');
+    startDate = parts[1];
+    startPostUrl = parts[2];
+  }
+
+  const [loadedPosts, following, muteWords] = await Promise.all([
+    listFeedFromUserFeedRecord(requesterDid, limit, startDate, startPostUrl),
     getSubscriberFollowingRecord(requesterDid),
     getMuteWords(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
       ? triggerSubscriberSync(requesterDid)
       : Promise.resolve(),
   ]);
-
-  let feedContent: { cursor?: string; posts: Array<PostTableRecord> };
-  if (cursor != null) {
-    const startFrom = loadedFeedContent.posts.findIndex(
-      (post) => post.uri === cursor
-    );
-    if (startFrom === -1) feedContent = { posts: [] };
-    else feedContent = { posts: loadedFeedContent.posts.slice(startFrom + 1) };
-  } else {
-    feedContent = loadedFeedContent;
-  }
 
   if (Object.keys(following?.following ?? {}).length === 0) {
     console.log(`Returning First View Post`);
@@ -496,16 +473,28 @@ export const rawHandler = async (
     };
   }
 
-  let filteredFeedContent: Array<FeedEntry> = await (isBeta
-    ? filterFeedContentBeta(feedContent, following, muteWords)
-    : filterFeedContent(feedContent, following, muteWords));
+  let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
+    await (isBeta
+      ? filterFeedContentBeta(loadedPosts, following, muteWords)
+      : filterFeedContent(loadedPosts, following, muteWords));
 
-  const nextCursor = filteredFeedContent[limit]?.uri;
-  filteredFeedContent = filteredFeedContent.slice(0, limit);
+  let nextCursor: string | undefined = undefined;
+  const nextPost = filteredFeedContent[limit];
+  if (nextPost == null) {
+    filteredFeedContent.push({
+      post: {
+        uri: NO_MORE_POSTS_POST,
+        type: 'post',
+      } as FeedEntry,
+    });
+  } else {
+    nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
+    filteredFeedContent = filteredFeedContent.slice(0, limit);
+  }
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: filteredFeedContent.map((post) =>
+      feed: filteredFeedContent.map(({ post }) =>
         post.type === 'post'
           ? { post: post.uri }
           : {

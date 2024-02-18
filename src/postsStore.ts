@@ -5,6 +5,7 @@ import {
   BatchWriteCommandOutput,
   DynamoDBDocumentClient,
   QueryCommand,
+  QueryCommandInput,
   QueryCommandOutput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
 import PQueue from 'p-queue';
@@ -266,36 +267,57 @@ export const listFeedFromPosts = async (
 };
 
 export const listFeedFromUserFeedRecord = async (
-  subscriberDid: string
-): Promise<{
-  cursor?: string;
-  posts: Array<PostTableRecord>;
-}> => {
+  subscriberDid: string,
+  limit: number,
+  startDate: string | undefined,
+  startPostUrl: string | undefined
+): Promise<Array<{ indexedAt: string; post: PostTableRecord }>> => {
   const TableName = process.env.USER_FEED_TABLE as string;
-  const result = await ddbDocClient.send(
-    new QueryCommand({
-      TableName,
-      KeyConditionExpression: 'subscriberDid = :subscriberDid',
-      ExpressionAttributeValues: {
-        ':subscriberDid': subscriberDid,
-      },
-      ScanIndexForward: false,
-      Limit: 20,
-    })
-  );
+  let posts: Array<{ indexedAt: string; post: PostTableRecord }> = [];
+  let cursor: QueryCommandInput['ExclusiveStartKey'] = undefined;
+  do {
+    const result: QueryCommandOutput = await ddbDocClient.send(
+      new QueryCommand({
+        TableName,
+        KeyConditionExpression:
+          'subscriberDid = :subscriberDid AND indexedAt <= :startDate',
+        ExpressionAttributeValues: {
+          ':subscriberDid': subscriberDid,
+          ':startDate': startDate ?? '9999',
+        },
+        ScanIndexForward: false,
+        Limit: 20,
+      })
+    );
 
-  let posts: Array<PostTableRecord> = [];
-  if (result.Items != null) {
-    for (const item of result.Items) {
-      posts.push(...((item.posts ?? []) as Array<PostTableRecord>));
+    cursor = result.LastEvaluatedKey;
+
+    if (result.Items != null) {
+      for (const item of result.Items) {
+        const recordPosts = (item.posts ?? []) as Array<PostTableRecord>;
+        posts.push(
+          ...recordPosts.map((post) => ({
+            post,
+            indexedAt: item.indexedAt as string,
+          }))
+        );
+      }
     }
-  }
+  } while (cursor != null && posts.length < 3 * limit);
+
   posts = posts
     .sort((a, b) => {
-      if (a.createdAt < b.createdAt) return 1;
-      if (a.createdAt > b.createdAt) return -1;
+      if (a.post.createdAt < b.post.createdAt) return 1;
+      if (a.post.createdAt > b.post.createdAt) return -1;
       return 0;
     })
-    .slice(0, 100);
-  return { posts };
+    .slice(0, 3 * limit);
+
+  if (startPostUrl != null) {
+    const startFrom = posts.findIndex((post) => post.post.uri === startPostUrl);
+    if (startFrom === -1) posts = [];
+    else posts = posts.slice(startFrom + 1);
+  }
+
+  return posts;
 };
