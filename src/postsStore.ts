@@ -4,7 +4,6 @@ import {
   BatchWriteCommand,
   BatchWriteCommandOutput,
   DynamoDBDocumentClient,
-  PutCommand,
   QueryCommand,
   QueryCommandOutput,
   TransactWriteCommand,
@@ -55,24 +54,6 @@ export type FeedEntry = Pick<
 const client = new DynamoDBClient({});
 const ddbDocClient = DynamoDBDocumentClient.from(client);
 
-export const getPostsForExternalResolve = async (
-  limit: number
-): Promise<Array<PostTableRecord>> => {
-  const TableName = process.env.POSTS_TABLE as string;
-  const result = await ddbDocClient.send(
-    new QueryCommand({
-      TableName,
-      IndexName: 'ByResolvedStatusAndCreatedAt',
-      KeyConditionExpression: 'resolvedStatus = :externalResolve',
-      ExpressionAttributeValues: {
-        ':externalResolve': 'EXTERNAL_RESOLVE',
-      },
-      Limit: limit,
-    })
-  );
-  return (result.Items ?? []) as Array<PostTableRecord>;
-};
-
 export const getPosts = async (
   postUris: Array<string>
 ): Promise<Record<string, PostTableRecord>> => {
@@ -105,16 +86,6 @@ export const getPosts = async (
     }
   }
   return result;
-};
-
-export const savePost = async (post: PostTableRecord) => {
-  const TableName = process.env.POSTS_TABLE as string;
-  await ddbDocClient.send(
-    new PutCommand({
-      TableName,
-      Item: post,
-    })
-  );
 };
 
 export const savePostsBatch = async (
