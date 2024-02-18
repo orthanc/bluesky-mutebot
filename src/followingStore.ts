@@ -4,7 +4,6 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import {
   BatchGetCommand,
-  DeleteCommandInput,
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
@@ -13,7 +12,6 @@ import {
   TransactWriteCommand,
   TransactWriteCommandInput,
   UpdateCommand,
-  UpdateCommandInput,
 } from '@aws-sdk/lib-dynamodb'; // ES6 import
 import {
   FollowingEntry,
@@ -149,48 +147,6 @@ export const getSubscriberFollowingRecord = async (
 const didPrefixLength = 'did:plc:'.length + 2;
 export const getDidPrefix = (did: string) => did.substring(0, didPrefixLength);
 
-type UpdateItem = Required<
-  Pick<
-    UpdateCommandInput,
-    'TableName' | 'Key' | 'UpdateExpression' | 'ExpressionAttributeValues'
-  >
-> &
-  Pick<UpdateCommandInput, 'ExpressionAttributeNames'>;
-
-const buildAddFollowedBySubscriber = (
-  subscriberDid: string,
-  following: string
-): {
-  Update: UpdateItem;
-} => ({
-  Update: {
-    TableName: subscriberFollowingTableName,
-    Key: {
-      subscriberDid: following,
-      qualifier: subscriberDid,
-    },
-    UpdateExpression: 'SET following = :one',
-    ExpressionAttributeValues: {
-      ':one': 1,
-    },
-  },
-});
-
-const buildRemoveFollowedBySubscriber = (
-  subscriberDid: string,
-  following: string
-): {
-  Delete: DeleteCommandInput;
-} => ({
-  Delete: {
-    TableName: subscriberFollowingTableName,
-    Key: {
-      subscriberDid: following,
-      qualifier: subscriberDid,
-    },
-  },
-});
-
 export const saveUpdates = async (
   subscriberFollowing: FollowingRecord,
   operations: Array<FollowingUpdate>
@@ -198,8 +154,8 @@ export const saveUpdates = async (
   let remainingOperations = operations;
   let updatedSubscriberFollowing = subscriberFollowing;
   while (remainingOperations.length > 0) {
-    const batch = remainingOperations.slice(0, 49);
-    remainingOperations = remainingOperations.slice(49);
+    const batch = remainingOperations.slice(0, 99);
+    remainingOperations = remainingOperations.slice(99);
 
     const lastRev = updatedSubscriberFollowing.rev;
     updatedSubscriberFollowing = {
@@ -294,14 +250,6 @@ export const saveUpdates = async (
           },
         },
       });
-      followingArray.forEach((following) =>
-        commandItems.push(
-          buildAddFollowedBySubscriber(
-            subscriberFollowing.subscriberDid,
-            following
-          )
-        )
-      );
     });
     Object.entries(removedFollowed).forEach(([didPrefix, following]) => {
       const followingArray = Array.from(following);
@@ -322,14 +270,6 @@ export const saveUpdates = async (
           ),
         },
       });
-      followingArray.forEach((following) =>
-        commandItems.push(
-          buildRemoveFollowedBySubscriber(
-            subscriberFollowing.subscriberDid,
-            following
-          )
-        )
-      );
     });
 
     const writeCommand: TransactWriteCommandInput = {

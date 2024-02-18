@@ -240,7 +240,6 @@ functions:
           - dynamodb:GetItem
           - dynamodb:BatchGetItem
         Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
           - !GetAtt FollowedByCountTable.Arn
       - Effect: "Allow"
         Action:
@@ -274,38 +273,6 @@ functions:
         Resource:
           - !GetAtt SubscriberFollowingTable.Arn
           - !GetAtt FollowedByCountTable.Arn
-
-  syncSubscriberFollowing-onFolUnfol:
-    handler: ./src/endpoints/syncSubscriberFollowing/onFollowUnfollow.handler
-    events:
-      - stream:
-          type: dynamodb
-          arn:
-            Fn::GetAtt: [SubscriberFollowingTable, StreamArn]
-          startingPosition: LATEST
-          batchSize: 1
-          maximumRetryAttempts: 5
-          filterPatterns:
-            - eventName: [INSERT, REMOVE]
-              dynamodb:
-                Keys:
-                  subscriberDid:
-                    S: [ { "anything-but": aggregate } ]
-                  qualifier:
-                    S: [ { "anything-but": subscriber } ]
-    iamRoleStatementsName: ${self:service}-${self:provider.stage}-syncSubscriber-onFoUnfo-${self:provider.region}
-    iamRoleStatements:
-      - Effect: "Allow"
-        Action:
-          - dynamodb:UpdateItem
-        Resource:
-          - !GetAtt SubscriberFollowingTable.Arn
-      - Effect: "Allow"
-        Action:
-          - dynamodb:Query
-        Resource:
-          - !GetAtt PostsTable.Arn
-          - !Sub "${PostsTable.Arn}/*"
 
   syncSubscriberFollowing-cleanUp:
     handler: ./src/endpoints/syncSubscriberFollowing/cleanUpOldSubscribers.handler
