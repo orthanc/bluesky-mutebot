@@ -84,7 +84,7 @@ const renderPage = async (
         node: (
           <MuteWordsContent
             handle={session.subscriberHandle}
-            muteWords={muteWords}
+            muteWords={muteWords.map((mute) => mute.word)}
           />
         ),
       };

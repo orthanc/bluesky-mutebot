@@ -19,6 +19,7 @@ import {
 import { getMuteWords } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
+import { MuteWord } from '../bff/pages/MuteWords.';
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
 
@@ -473,10 +474,15 @@ export const rawHandler = async (
     };
   }
 
+  const now = new Date().toISOString();
+  const activeMuteWords = muteWords
+    .filter((muteWord) => muteWord.forever || muteWord.muteUntil < now)
+    .map((muteWord) => muteWord.word);
+
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
     await (isBeta
-      ? filterFeedContentBeta(loadedPosts, following, muteWords)
-      : filterFeedContent(loadedPosts, following, muteWords));
+      ? filterFeedContentBeta(loadedPosts, following, activeMuteWords)
+      : filterFeedContent(loadedPosts, following, activeMuteWords));
 
   let nextCursor: string | undefined = undefined;
   const nextPost = filteredFeedContent[limit];
