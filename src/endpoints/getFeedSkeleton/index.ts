@@ -19,7 +19,6 @@ import {
 import { getMuteWords } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
-import { MuteWord } from '../bff/pages/MuteWords.';
 
 const didResolver = new DidResolver({ plcUrl: 'https://plc.directory' });
 

@@ -76,7 +76,7 @@ export const addMuteWord = async (
   subscriberDid: string,
   muteWord: string,
   muteUntil?: string
-) => {
+): Promise<MutedWord> => {
   await ddbDocClient.send(
     new UpdateCommand({
       TableName: USER_SETTINGS_TABLE,
@@ -97,4 +97,7 @@ export const addMuteWord = async (
       },
     })
   );
+  return muteUntil == null
+    ? { word: muteWord, forever: true }
+    : { word: muteWord, forever: false, muteUntil };
 };

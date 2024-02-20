@@ -25,7 +25,8 @@ import cookie from 'cookie';
 import { Login } from './Login';
 import { Body } from './Body';
 import { Content } from './Content';
-import { AddMuteWord, MuteWord } from './MuteWords.';
+import { AddMuteWord, MuteWord, MuteWordListItem } from './MuteWords.';
+import { addDays, addHours, addMonths, addWeeks, addYears } from 'date-fns';
 
 export type WebEvent = APIGatewayProxyEventV2;
 
@@ -84,7 +85,8 @@ const renderPage = async (
         node: (
           <MuteWordsContent
             handle={session.subscriberHandle}
-            muteWords={muteWords.map((mute) => mute.word)}
+            muteWords={muteWords}
+            now={new Date().toISOString()}
           />
         ),
       };
@@ -206,6 +208,31 @@ const createHttpResponse = ({
           : render(node)),
 });
 
+const calculateMuteUntil = (
+  muteUntilRelative: string | undefined,
+  now: Date
+): string | undefined => {
+  if (muteUntilRelative == null) return undefined;
+  switch (muteUntilRelative) {
+    case '1h':
+      return addHours(now, 1).toISOString();
+    case '3h':
+      return addHours(now, 3).toISOString();
+    case '12h':
+      return addHours(now, 12).toISOString();
+    case '1d':
+      return addDays(now, 1).toISOString();
+    case '1w':
+      return addWeeks(now, 1).toISOString();
+    case '1m':
+      return addMonths(now, 1).toISOString();
+    case '1y':
+      return addYears(now, 1).toISOString();
+    default:
+      return undefined;
+  }
+};
+
 export const renderResponse = async (
   event: WebEvent
 ): Promise<APIGatewayProxyResultV2> => {
@@ -266,16 +293,31 @@ export const renderResponse = async (
     switch (event.routeKey) {
       case 'POST /mutewords': {
         const body = event.body as unknown as Partial<{
+          addMuteWord: 'true';
           unmuteWord: string;
           muteWord: string;
+          muteUntil: string;
         }>;
         if (body.muteWord) {
-          await addMuteWord(session.subscriberDid, body.muteWord);
+          const now = new Date();
+          const muteUntil = calculateMuteUntil(body.muteUntil, now);
+          const muteWord = await addMuteWord(
+            session.subscriberDid,
+            body.muteWord,
+            muteUntil
+          );
+          if (body.addMuteWord) {
+            return createHttpResponse({
+              node: [
+                <MuteWordListItem>
+                  <MuteWord muteWord={muteWord} now={now.toISOString()} />
+                </MuteWordListItem>,
+                <AddMuteWord oob={true} muteUntil={body.muteUntil} />,
+              ],
+            });
+          }
           return createHttpResponse({
-            node: [
-              <MuteWord word={body.muteWord} />,
-              <AddMuteWord oob={true} />,
-            ],
+            node: <MuteWord muteWord={muteWord} now={now.toISOString()} />,
           });
         }
         if (body.unmuteWord) {
