@@ -140,7 +140,7 @@ const processBatch = async (
   const notDeletedPostsToSave = postsToSave.filter(
     (post) => !deletesToApply.includes(post.uri)
   );
-  await savePostsBatch(notDeletedPostsToSave, deletesToApply);
+  // await savePostsBatch(notDeletedPostsToSave, deletesToApply);
   return {
     metrics: {
       postsSaved,
