@@ -133,9 +133,7 @@ const filterFeedContent = async (
       if (
         post.textEntries.some((postText) => {
           const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
+          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
         })
       )
         return false;
@@ -154,9 +152,7 @@ const filterFeedContent = async (
         if (
           referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
+            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
           })
         )
           return false;
@@ -252,9 +248,7 @@ const filterFeedContentBeta = async (
       if (
         post.textEntries.some((postText) => {
           const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
+          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
         })
       )
         return false;
@@ -273,9 +267,7 @@ const filterFeedContentBeta = async (
         if (
           referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
+            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
           })
         )
           return false;
