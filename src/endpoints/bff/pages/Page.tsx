@@ -69,12 +69,8 @@ export const Page: preact.FunctionComponent<PageProps> = ({
       />
       <script src={`${STATIC_CONTENT_BASE}/htmx-1.9.9.min.js`}></script>
       <script src={`${STATIC_CONTENT_BASE}/htmx-ext-ws-1.9.9.js`}></script>
-      <script type="module">
-        import {'{parseISO, formatRelative}'} from
-        'https://cdn.jsdelivr.net/npm/date-fns@3.3.1/+esm'; window.dateFns =
-        {'{parseISO, formatRelative}'};
-      </script>
-      <script src="//unpkg.com/alpinejs" defer></script>
+      <script src={`${STATIC_CONTENT_BASE}/date-fns-3.3.1.js`}></script>
+      <script src={`${STATIC_CONTENT_BASE}/alpine-3.13.5.js`} defer></script>
       {csrfToken == null ? null : (
         <script
           dangerouslySetInnerHTML={{
