@@ -37,7 +37,7 @@ export const getMuteWords = async (
   return Object.entries(result.Item)
     .filter(([key]) => key.startsWith('mute_'))
     .map(([key, value]): MutedWord => {
-      const word = key.substring('mute_'.length).toLowerCase().trim();
+      const word = key.substring('mute_'.length);
       if (value === true) {
         return {
           word,
@@ -66,7 +66,7 @@ export const deleteMuteWord = async (
       },
       UpdateExpression: 'REMOVE #word',
       ExpressionAttributeNames: {
-        '#word': `mute_${muteWord.toLowerCase().trim()}`,
+        '#word': `mute_${muteWord}`,
       },
     })
   );
@@ -85,7 +85,7 @@ export const addMuteWord = async (
       },
       UpdateExpression: 'SET #word = :value',
       ExpressionAttributeNames: {
-        '#word': `mute_${muteWord.toLowerCase().trim()}`,
+        '#word': `mute_${muteWord}`,
       },
       ExpressionAttributeValues: {
         ':value':
