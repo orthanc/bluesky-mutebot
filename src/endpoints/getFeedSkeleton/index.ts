@@ -467,7 +467,7 @@ export const rawHandler = async (
 
   const now = new Date().toISOString();
   const activeMuteWords = muteWords
-    .filter((muteWord) => muteWord.forever || muteWord.muteUntil < now)
+    .filter((muteWord) => muteWord.forever || muteWord.muteUntil > now)
     .map((muteWord) => muteWord.word);
 
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
