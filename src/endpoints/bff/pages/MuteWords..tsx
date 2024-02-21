@@ -163,7 +163,7 @@ export const MuteWords = ({
             <MuteWord muteWord={muteWord} now={now} />
           </MuteWordListItem>
         ))}
-        <AddMuteWord />
+        <AddMuteWord muteUntil="forever" />
       </ul>
     </div>
   );
