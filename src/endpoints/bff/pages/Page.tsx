@@ -42,6 +42,7 @@ export const Page: preact.FunctionComponent<PageProps> = ({
         }`}
         rel="stylesheet"
       />
+      <style>[x-cloak] {'{ display: none !important; }'}</style>
       <link
         rel="icon"
         type="image/png"
@@ -68,6 +69,8 @@ export const Page: preact.FunctionComponent<PageProps> = ({
       />
       <script src={`${STATIC_CONTENT_BASE}/htmx-1.9.9.min.js`}></script>
       <script src={`${STATIC_CONTENT_BASE}/htmx-ext-ws-1.9.9.js`}></script>
+      <script src={`${STATIC_CONTENT_BASE}/date-fns-3.3.1.js`}></script>
+      <script src={`${STATIC_CONTENT_BASE}/alpine-3.13.5.js`} defer></script>
       {csrfToken == null ? null : (
         <script
           dangerouslySetInnerHTML={{

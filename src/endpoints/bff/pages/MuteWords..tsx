@@ -1,24 +1,102 @@
-export const MuteWord: preact.FunctionComponent<{ word: string }> = ({
-  word,
-}) => (
-  <li className="flex border-slate-300 border-b p-2 space-x-2 items-center htmx-request:opacity-50">
-    <div className="flex-grow">{word}</div>
-    <div>
-      <button
-        name="unmuteWord"
-        value={word}
-        hx-post="/mutewords"
-        className="rounded-full w-20 px-2 py-1 text-sm bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-500 htmx-request:animate-pulse"
+import classNames from 'classnames';
+import { MutedWord } from '../../../muteWordsStore';
+
+const MuteFor: preact.FunctionComponent<{
+  showWhen?: string;
+  selected?: string;
+}> = ({ showWhen, selected }) => (
+  <select
+    {...(showWhen ? { 'x-show': showWhen } : {})}
+    name="muteUntil"
+    autoComplete="off"
+    className="py-2 px-8 border rounded-lg"
+  >
+    {selected == null ? (
+      <option value="null" selected>
+        Mute for...
+      </option>
+    ) : null}
+    {Object.entries({
+      '1h': '1 hour',
+      '3h': '3 hours',
+      '12h': '12 hours',
+      '1d': '1 day',
+      '1w': '1 week',
+      '1m': '1 month',
+      '1y': '1 year',
+      forever: 'forever',
+    }).map(([value, display]) => (
+      <option value={value} selected={value === selected}>
+        {display}
+      </option>
+    ))}
+  </select>
+);
+
+export const MuteWord: preact.FunctionComponent<{
+  muteWord: MutedWord;
+  now: string;
+}> = ({ muteWord, now }) => {
+  const expired = !muteWord.forever && muteWord.muteUntil < now;
+  return (
+    <>
+      <div
+        className={classNames(
+          'flex-grow flex-shrink text-ellipsis overflow-x-hidden',
+          {
+            'text-gray-500': expired,
+          }
+        )}
       >
-        Unmute
-      </button>{' '}
-    </div>
+        {muteWord.word}
+      </div>
+      <div x-data={JSON.stringify({ ...muteWord, editUntil: false })}>
+        <div
+          x-show="!editUntil"
+          x-on:click="editUntil = !editUntil"
+          className="text-xs text-gray-500 underline cursor-pointer"
+        >
+          {muteWord.forever ? (
+            <>muted forever</>
+          ) : expired ? (
+            <>mute expired</>
+          ) : (
+            <>
+              <div>muted until </div>
+              <div x-text="dateFns.formatRelative(dateFns.parseISO(muteUntil), now)" />
+            </>
+          )}
+        </div>
+        <form hx-post="/mutewords" hx-trigger="change">
+          <input type="hidden" name="muteWord" value={muteWord.word} />
+          <MuteFor showWhen="editUntil" />
+        </form>
+      </div>
+      <div>
+        <button
+          name="unmuteWord"
+          value={muteWord.word}
+          hx-post="/mutewords"
+          hx-swap="delete"
+          className="rounded-full w-20 px-2 py-1 text-sm bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-500 htmx-request:animate-pulse"
+        >
+          {expired ? 'Remove' : 'Unmute'}
+        </button>{' '}
+      </div>
+    </>
+  );
+};
+
+export const MuteWordListItem: preact.FunctionComponent = ({ children }) => (
+  <li className="flex border-slate-300 border-b p-2 space-x-2 items-center htmx-request:opacity-50">
+    {children}
   </li>
 );
 
-export const AddMuteWord: preact.FunctionComponent<{ oob?: boolean }> = ({
-  oob,
-}) => (
+export const AddMuteWord: preact.FunctionComponent<{
+  oob?: boolean;
+  muteUntil?: string;
+}> = ({ oob, muteUntil }) => (
   <li
     className="p-2 htmx-request:animate-pulse"
     id="add-mute-word"
@@ -29,11 +107,11 @@ export const AddMuteWord: preact.FunctionComponent<{ oob?: boolean }> = ({
     </label>
     <form
       hx-post="/mutewords"
-      className="flex space-x-2 items-center"
       hx-swap="afterend"
       hx-target="previous li"
+      className="space-y-2"
     >
-      <div className="flex-grow">
+      <div>
         <input
           label="word-to-mute-label"
           type="text"
@@ -44,30 +122,46 @@ export const AddMuteWord: preact.FunctionComponent<{ oob?: boolean }> = ({
           className="w-full rounded-lg border border-slate-400 dark:bg-slate-600 p-1"
         />
       </div>
-      <div>
-        <input
-          type="submit"
-          value="Mute"
-          className="rounded-full w-20 px-2 py-1 text-sm bg-bsky hover:bg-sky-500 text-white"
-        />
+      <div className="flex space-x-2 items-center">
+        <div className="flex-grow">
+          <MuteFor selected={muteUntil} />
+        </div>
+        <div>
+          <input type="hidden" name="addMuteWord" value="true" />
+          <input
+            type="submit"
+            value="Mute"
+            className="rounded-full w-20 px-2 py-1 text-sm bg-bsky hover:bg-sky-500 text-white"
+          />
+        </div>
       </div>
     </form>
   </li>
 );
 
-export const MuteWords = ({ muteWords }: { muteWords: Array<string> }) => {
+export const MuteWords = ({
+  muteWords,
+  now,
+}: {
+  muteWords: Array<MutedWord>;
+  now: string;
+}) => {
   return (
     <div
       id="mute-words"
       className="mt-4 relative"
       hx-indicator="closest li"
       hx-target="closest li"
-      hx-swap="delete"
+      x-data={JSON.stringify({ now })}
+      x-show="true"
+      x-cloak
     >
       <ul className="rounded-lg border-slate-300 border bg-slate-50 dark:bg-slate-950">
         <li className="hidden" />
-        {muteWords.map((word) => (
-          <MuteWord word={word} />
+        {muteWords.map((muteWord) => (
+          <MuteWordListItem>
+            <MuteWord muteWord={muteWord} now={now} />
+          </MuteWordListItem>
         ))}
         <AddMuteWord />
       </ul>
