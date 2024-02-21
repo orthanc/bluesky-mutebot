@@ -133,9 +133,7 @@ const filterFeedContent = async (
       if (
         post.textEntries.some((postText) => {
           const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
+          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
         })
       )
         return false;
@@ -154,9 +152,7 @@ const filterFeedContent = async (
         if (
           referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
+            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
           })
         )
           return false;
@@ -252,9 +248,7 @@ const filterFeedContentBeta = async (
       if (
         post.textEntries.some((postText) => {
           const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) =>
-            lowerText.includes(mutedWord.trim())
-          );
+          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
         })
       )
         return false;
@@ -273,9 +267,7 @@ const filterFeedContentBeta = async (
         if (
           referencedPost.textEntries.some((postText) => {
             const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) =>
-              lowerText.includes(mutedWord.trim())
-            );
+            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
           })
         )
           return false;
@@ -475,8 +467,8 @@ export const rawHandler = async (
 
   const now = new Date().toISOString();
   const activeMuteWords = muteWords
-    .filter((muteWord) => muteWord.forever || muteWord.muteUntil < now)
-    .map((muteWord) => muteWord.word);
+    .filter((muteWord) => muteWord.forever || muteWord.muteUntil > now)
+    .map((muteWord) => muteWord.word.toLowerCase().trim());
 
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
     await (isBeta
