@@ -97,9 +97,10 @@ export const AddMuteWord: preact.FunctionComponent<{
   oob?: boolean;
   muteUntil?: string;
 }> = ({ oob, muteUntil }) => (
-  <li
-    className="p-2 htmx-request:animate-pulse"
+  <div
+    className="p-2 rounded-b-lg border-t-0 border-slate-300 border bg-slate-50 dark:bg-slate-950 htmx-request:animate-pulse"
     id="add-mute-word"
+    hx-indicator="this"
     {...(oob ? { 'hx-swap-oob': 'true' } : undefined)}
   >
     <label id="word-to-mute-label" className="text-sm font-semibold">
@@ -107,8 +108,8 @@ export const AddMuteWord: preact.FunctionComponent<{
     </label>
     <form
       hx-post="/mutewords"
-      hx-swap="afterend"
-      hx-target="previous li"
+      hx-swap="beforeend"
+      hx-target="#muteWords"
       className="space-y-2"
     >
       <div>
@@ -136,7 +137,7 @@ export const AddMuteWord: preact.FunctionComponent<{
         </div>
       </div>
     </form>
-  </li>
+  </div>
 );
 
 export const MuteWords = ({
@@ -156,15 +157,17 @@ export const MuteWords = ({
       x-show="true"
       x-cloak
     >
-      <ul className="rounded-lg border-slate-300 border bg-slate-50 dark:bg-slate-950">
-        <li className="hidden" />
+      <ul
+        className="rounded-t-lg border-slate-300 border border-b-0 bg-slate-50 dark:bg-slate-950"
+        id="muteWords"
+      >
         {muteWords.map((muteWord) => (
           <MuteWordListItem>
             <MuteWord muteWord={muteWord} now={now} />
           </MuteWordListItem>
         ))}
-        <AddMuteWord muteUntil="forever" />
       </ul>
+      <AddMuteWord muteUntil="forever" />
     </div>
   );
 };
