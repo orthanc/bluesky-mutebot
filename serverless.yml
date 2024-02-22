@@ -89,6 +89,7 @@ functions:
       - httpApi: GET /login/session/approval
       - httpApi: POST /logout
       - httpApi: POST /mutewords
+      - httpApi: POST /followed-user
     environment:
       MUTEBOT_CSS_NAME: ${file('./resolveMutebotCss.js')}
     iamRoleStatements:
