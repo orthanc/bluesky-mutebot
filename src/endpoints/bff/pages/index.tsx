@@ -27,6 +27,8 @@ import { Body } from './Body';
 import { Content } from './Content';
 import { AddMuteWord, MuteWord, MuteWordListItem } from './MuteWords.';
 import { addDays, addHours, addMonths, addWeeks, addYears } from 'date-fns';
+import { getSubscriberFollowingRecord } from '../../../followingStore';
+import { RetweetSettingsContent } from './RetweetSettingsContent';
 
 export type WebEvent = APIGatewayProxyEventV2;
 
@@ -87,6 +89,19 @@ const renderPage = async (
             handle={session.subscriberHandle}
             muteWords={muteWords}
             now={new Date().toISOString()}
+          />
+        ),
+      };
+    }
+    case '/retweet-settings': {
+      const following = await getSubscriberFollowingRecord(
+        session.subscriberDid
+      );
+      return {
+        node: (
+          <RetweetSettingsContent
+            handle={session.subscriberHandle}
+            following={following.following}
           />
         ),
       };
