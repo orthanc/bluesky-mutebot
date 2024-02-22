@@ -16,7 +16,7 @@ import {
   PostTableRecord,
   listFeedFromUserFeedRecord,
 } from '../../postsStore';
-import { getMuteWords } from '../../muteWordsStore';
+import { getUserSettings } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 
@@ -439,10 +439,10 @@ export const rawHandler = async (
     startPostUrl = parts[2];
   }
 
-  const [loadedPosts, following, muteWords] = await Promise.all([
+  const [loadedPosts, following, userSettings] = await Promise.all([
     listFeedFromUserFeedRecord(requesterDid, limit, startDate, startPostUrl),
     getSubscriberFollowingRecord(requesterDid),
-    getMuteWords(requesterDid),
+    getUserSettings(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
       ? triggerSubscriberSync(requesterDid)
       : Promise.resolve(),
@@ -466,7 +466,7 @@ export const rawHandler = async (
   }
 
   const now = new Date().toISOString();
-  const activeMuteWords = muteWords
+  const activeMuteWords = userSettings.muteWords
     .filter((muteWord) => muteWord.forever || muteWord.muteUntil > now)
     .map((muteWord) => muteWord.word.toLowerCase().trim());
 

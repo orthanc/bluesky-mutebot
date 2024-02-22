@@ -22,9 +22,9 @@ export type MutedWord = { word: string } & (
   | { forever: false; muteUntil: string }
 );
 
-export const getMuteWords = async (
+export const getUserSettings = async (
   subscriberDid: string
-): Promise<Array<MutedWord>> => {
+): Promise<{ muteWords: Array<MutedWord> }> => {
   const result = await ddbDocClient.send(
     new GetCommand({
       TableName: USER_SETTINGS_TABLE,
@@ -33,25 +33,27 @@ export const getMuteWords = async (
       },
     })
   );
-  if (result.Item == null) return [];
-  return Object.entries(result.Item)
-    .filter(([key]) => key.startsWith('mute_'))
-    .map(([key, value]): MutedWord => {
-      const word = key.substring('mute_'.length);
-      if (value === true) {
+  if (result.Item == null) return { muteWords: [] };
+  return {
+    muteWords: Object.entries(result.Item)
+      .filter(([key]) => key.startsWith('mute_'))
+      .map(([key, value]): MutedWord => {
+        const word = key.substring('mute_'.length);
+        if (value === true) {
+          return {
+            word,
+            forever: true,
+          };
+        }
+        const val = value as MuteWordValue;
         return {
+          ...val,
           word,
-          forever: true,
+          forever: false,
         };
-      }
-      const val = value as MuteWordValue;
-      return {
-        ...val,
-        word,
-        forever: false,
-      };
-    })
-    .sort((a, b) => a.word.localeCompare(b.word));
+      })
+      .sort((a, b) => a.word.localeCompare(b.word)),
+  };
 };
 
 export const deleteMuteWord = async (

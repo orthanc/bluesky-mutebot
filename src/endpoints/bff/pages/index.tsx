@@ -19,7 +19,7 @@ import { MuteWordsContent } from './MuteWordsContent';
 import {
   addMuteWord,
   deleteMuteWord,
-  getMuteWords,
+  getUserSettings,
 } from '../../../muteWordsStore';
 import cookie from 'cookie';
 import { Login } from './Login';
@@ -82,12 +82,12 @@ const renderPage = async (
 ): Promise<ResponseFragment> => {
   switch (path) {
     case '/': {
-      const muteWords = await getMuteWords(session.subscriberDid);
+      const userSettings = await getUserSettings(session.subscriberDid);
       return {
         node: (
           <MuteWordsContent
             handle={session.subscriberHandle}
-            muteWords={muteWords}
+            muteWords={userSettings.muteWords}
             now={new Date().toISOString()}
           />
         ),
