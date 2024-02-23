@@ -28,7 +28,7 @@ import {
 } from '../../../muteWordsStore';
 import cookie from 'cookie';
 import { Login } from './Login';
-import { Body } from './Body';
+import { Body, PageId } from './Body';
 import { Content } from './Content';
 import { AddMuteWord, MuteWord, MuteWordListItem } from './MuteWords.';
 import { addDays, addHours, addMonths, addWeeks, addYears } from 'date-fns';
@@ -90,7 +90,7 @@ const getAuthorizedSession = async (
 const renderPage = async (
   path: string,
   session: AuthorizedSessionRecord
-): Promise<ResponseFragment> => {
+): Promise<ResponseFragment & { page: PageId }> => {
   switch (path) {
     case '/': {
       const userSettings = await getUserSettings(session.subscriberDid);
@@ -102,6 +102,7 @@ const renderPage = async (
             now={new Date().toISOString()}
           />
         ),
+        page: 'mute-words',
       };
     }
     case '/retweet-settings': {
@@ -118,6 +119,7 @@ const renderPage = async (
             now={new Date().toISOString()}
           />
         ),
+        page: 'followed-user-settings',
       };
     }
   }
@@ -186,11 +188,11 @@ const processLoginRequest = async (
         );
 
         const url = new URL(event.headers['hx-current-url'] as string);
-        const { node, headers } = await renderPage(url.pathname, session);
+        const { node, headers, page } = await renderPage(url.pathname, session);
 
         return {
           node: (
-            <Body isLoggedIn={true}>
+            <Body isLoggedIn={true} page={page}>
               <Content>{node}</Content>
             </Body>
           ),
@@ -313,7 +315,7 @@ export const renderResponse = async (
         return createHttpResponse({
           node: (
             <Page>
-              <Body isLoggedIn={false}>
+              <Body isLoggedIn={false} page="login">
                 <Login />
               </Body>
             </Page>
@@ -322,14 +324,14 @@ export const renderResponse = async (
         });
       }
 
-      const { node, headers } = await renderPage(
+      const { node, headers, page } = await renderPage(
         event.requestContext.http.path,
         session
       );
       return createHttpResponse({
         node: (
           <Page csrfToken={csrfToken}>
-            <Body isLoggedIn={true}>
+            <Body isLoggedIn={true} page={page}>
               <Content>{node}</Content>
             </Body>
           </Page>
@@ -458,7 +460,7 @@ export const renderResponse = async (
       case 'POST /logout': {
         return createHttpResponse({
           node: (
-            <Body isLoggedIn={false}>
+            <Body isLoggedIn={false} page="login">
               <Login />
             </Body>
           ),
