@@ -70,7 +70,8 @@ const resolvePosts = async (
 const filterFeedContent = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
-  muteWords: Array<string>
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -120,6 +121,8 @@ const filterFeedContent = async (
 
   const filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
+      if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
+        return false;
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -185,7 +188,8 @@ const filterFeedContent = async (
 const filterFeedContentBeta = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
-  muteWords: Array<string>
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -235,6 +239,8 @@ const filterFeedContentBeta = async (
 
   let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
+      if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
+        return false;
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -470,10 +476,30 @@ export const rawHandler = async (
     .filter((muteWord) => muteWord.forever || muteWord.muteUntil > now)
     .map((muteWord) => muteWord.word.toLowerCase().trim());
 
+  const muteRetweetsFrom = new Set(
+    Object.entries(userSettings.followedUserSettings)
+      .filter(
+        ([, followedSettings]) =>
+          followedSettings.muteRetweetsUntil === 'forever' ||
+          followedSettings.muteRetweetsUntil > now
+      )
+      .map(([did]) => did)
+  );
+
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
     await (isBeta
-      ? filterFeedContentBeta(loadedPosts, following, activeMuteWords)
-      : filterFeedContent(loadedPosts, following, activeMuteWords));
+      ? filterFeedContentBeta(
+          loadedPosts,
+          following,
+          activeMuteWords,
+          muteRetweetsFrom
+        )
+      : filterFeedContent(
+          loadedPosts,
+          following,
+          activeMuteWords,
+          muteRetweetsFrom
+        ));
 
   let nextCursor: string | undefined = undefined;
   const nextPost = filteredFeedContent[limit];
