@@ -47,6 +47,18 @@ export const FollowedUser: preact.FunctionComponent<{
           <MuteFor name="muteRetweetsUntil" showWhen="editUntil" />
         </form>
       </div>
+      <div>
+        <form hx-post="/followed-user" hx-swap="delete">
+          <input type="hidden" name="followedDid" value={followedUserDid} />
+          <button
+            name="action"
+            value="remove"
+            className="rounded-full w-20 px-2 py-1 text-sm bg-slate-300 hover:bg-slate-400 dark:bg-slate-700 dark:hover:bg-slate-500 htmx-request:animate-pulse"
+          >
+            Remove
+          </button>
+        </form>
+      </div>
     </>
   );
 };

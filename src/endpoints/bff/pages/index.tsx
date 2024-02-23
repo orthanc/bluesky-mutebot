@@ -21,6 +21,7 @@ import {
   FollowedUserSettings,
   addFollowedUserSettings,
   addMuteWord,
+  deleteFollowedUserSettings,
   deleteMuteWord,
   getUserSettings,
   updateFollowedUserRetweetMuted,
@@ -283,6 +284,10 @@ const followedUserBodySchema = z.discriminatedUnion('action', [
     followedDid: z.string(),
     muteRetweetsUntil: muteRetweetsUntilSchema,
   }),
+  z.object({
+    action: z.literal('remove'),
+    followedDid: z.string(),
+  }),
 ]);
 
 export const renderResponse = async (
@@ -436,6 +441,16 @@ export const renderResponse = async (
               />,
             ],
           });
+        } else if (body.action === 'remove') {
+          await deleteFollowedUserSettings(
+            session.subscriberDid,
+            body.followedDid
+          );
+
+          return {
+            statusCode: 200,
+            body: '',
+          };
         }
         // @ts-expect-error
         throw new httpError.BadRequest(`Unknown action ${body.action}`);
