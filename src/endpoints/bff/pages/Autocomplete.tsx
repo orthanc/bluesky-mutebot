@@ -11,6 +11,7 @@ export const Autocomplete = ({
       open: false,
       data: ${JSON.stringify(data)},
       _filter: '',
+      selectedItem: null,
       get filter() {
         return this._filter;
       },
@@ -21,9 +22,6 @@ export const Autocomplete = ({
       selectedIndex: -1,
       get filteredData() {
         return this.data.filter((entry) => entry.display.toLowerCase().includes(this.filter.toLowerCase())).slice(0,10)
-      },
-      get selectedItem() {
-        return this.filteredData[this.selectedIndex]
       },
       down() {
         if (this.selectedIndex < this.filteredData.length - 1) {
@@ -36,45 +34,64 @@ export const Autocomplete = ({
         }
       },
       selectItem(index) {
-        if (index != null) this.selectedIndex = index;
+        const selectedIndex = index != null ? index : this.selectedIndex;
+        this.selectedItem = this.filteredData[selectedIndex];
         if (this.selectedItem == null) return;
+        this.filter = '';
         this.open = false;
-        this.$dispatch('value-selected', this.selectedItem.value)
+        this.$dispatch('value-selected', this.selectedItem.value);
       },
+      enterEdit() {
+        if (this.selectedItem == null) return;
+        this.filter = this.selectedItem.display;
+        this.selectedItem = null;
+      }
     }`}
     x-modelable="selectedItem"
     x-model={model}
-    {...{ 'x-on:click.away': 'open = false' }}
   >
-    <input
-      type="text"
-      x-model="filter"
-      placeholder="Search by handle..."
-      className="border-slate-300 border w-full p-2"
-      x-on:focus="open = true"
-      {...{
-        'x-on:keydown.arrow-down.stop.prevent': 'down()',
-        'x-on:keydown.arrow-up.stop.prevent': 'up()',
-        'x-on:keydown.enter.stop.prevent': 'selectItem()',
-      }}
-    />
-    <ul
+    <div
       x-cloak
-      x-show="open && filter"
-      className="rounded-b-lg border-slate-300 border bg-slate-50 dark:bg-slate-950"
+      x-show="selectedItem"
+      x-text="selectedItem && selectedItem.display"
+      x-on:click="enterEdit()"
+      className="underline"
+    ></div>
+    <div
+      x-cloak
+      x-show="!selectedItem"
+      {...{ 'x-on:click.away': 'open = false' }}
     >
-      {/* @ts-expect-error */}
-      <template
-        x-for="(entry, index) in filteredData"
-        {...{ ':key': 'entry.value' }}
+      <input
+        type="text"
+        x-model="filter"
+        placeholder="Search by handle..."
+        className="border-slate-300 border w-full p-2"
+        x-on:focus="open = true"
+        x-bind:data-valid="!selectedItem"
+        {...{
+          'x-on:keydown.arrow-down.stop.prevent': 'down()',
+          'x-on:keydown.arrow-up.stop.prevent': 'up()',
+          'x-on:keydown.enter.stop.prevent': 'selectItem()',
+        }}
+      />
+      <ul
+        x-show="open && filter"
+        className="rounded-b-lg border-slate-300 border bg-slate-50 dark:bg-slate-950"
       >
-        <li
-          x-text="entry.display"
-          x-on:click="selectItem(index)"
-          x-bind:class="'border-slate-300 border-b p-2' + (index === selectedIndex ? ' bg-blue-100' : '')"
-        />
         {/* @ts-expect-error */}
-      </template>
-    </ul>
+        <template
+          x-for="(entry, index) in filteredData"
+          {...{ ':key': 'entry.value' }}
+        >
+          <li
+            x-text="entry.display"
+            x-on:click="selectItem(index)"
+            x-bind:class="'border-slate-300 border-b p-2' + (index === selectedIndex ? ' bg-blue-100' : '')"
+          />
+          {/* @ts-expect-error */}
+        </template>
+      </ul>
+    </div>
   </div>
 );

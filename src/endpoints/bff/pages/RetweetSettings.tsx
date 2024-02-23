@@ -78,7 +78,7 @@ export const AddFollowedUser: preact.FunctionComponent<{
         Mute retweets from user
       </label>
       <form
-        x-data={JSON.stringify({ selectedFollower: {} })}
+        x-data={JSON.stringify({ selectedFollower: null })}
         hx-post="/followed-user"
         hx-swap="beforeend"
         hx-target="#followed-user-settings"
@@ -105,7 +105,8 @@ export const AddFollowedUser: preact.FunctionComponent<{
             <button
               name="action"
               value="add"
-              className="rounded-full w-20 px-2 py-1 text-sm bg-bsky hover:bg-sky-500 text-white"
+              x-bind:disabled="!selectedFollower"
+              className="rounded-full w-32 px-2 py-1 text-sm bg-bsky hover:bg-sky-500 text-white disabled:bg-gray-400"
             >
               Mute Retweets
             </button>
