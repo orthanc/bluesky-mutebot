@@ -189,7 +189,8 @@ const filterFeedContentBeta = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
   muteWords: Array<string>,
-  muteRetweetsFrom: Set<string>
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -211,8 +212,9 @@ const filterFeedContentBeta = async (
       ) {
         // And it is a reply to someone followed (otherwise it would be filtered out anyway)
         if (
-          post.replyParentAuthorDid != null &&
-          followingDids.has(post.replyParentAuthorDid)
+          !filterRepliesToFollowed ||
+          (post.replyParentAuthorDid != null &&
+            followingDids.has(post.replyParentAuthorDid))
         ) {
           postUris.add(post.replyParentUri);
         }
@@ -281,7 +283,7 @@ const filterFeedContentBeta = async (
 
       // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
       // to be shared wider
-      if (postRef.type !== 'repost') {
+      if (filterRepliesToFollowed && postRef.type !== 'repost') {
         // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
         if (
           post.startsWithMention &&
@@ -394,6 +396,34 @@ const filterFeedContentBeta = async (
   return filteredFeedContent;
 };
 
+const fetchKikorangi = async (
+  limit?: number,
+  cursor?: string
+): ReturnType<typeof listFeedFromUserFeedRecord> => {
+  const result = await (
+    await getBskyAgent()
+  ).app.bsky.feed.getFeed({
+    feed: 'at://did:plc:65yo7ynzcyp4kpwsienyukrz/app.bsky.feed.generator/aaadfjfgt73ls',
+    limit,
+    cursor,
+  });
+  return {
+    posts: result.data.feed.map((entry) => ({
+      post: postToPostTableRecord(
+        {
+          record: entry.post.record as PostRecord,
+          uri: entry.post.uri,
+          author: entry.post.author.did,
+        },
+        9,
+        {}
+      ),
+      indexedAt: '',
+    })),
+    cursor: result.data.cursor,
+  };
+};
+
 export const rawHandler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
@@ -423,7 +453,8 @@ export const rawHandler = async (
 
   if (
     feed !== process.env.FOLLOWING_FEED_URL &&
-    feed !== process.env.BETA_FOLLOWING_FEED_URL
+    feed !== process.env.BETA_FOLLOWING_FEED_URL &&
+    feed !== process.env.KIKORANGI_FEED_URL
   ) {
     console.log(`Unknown Feed ${feed}`);
     return {
@@ -435,6 +466,7 @@ export const rawHandler = async (
     };
   }
 
+  const isKikoragi = feed === process.env.KIKORANGI_FEED_URL;
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
 
   let startDate: string | undefined = undefined;
@@ -445,8 +477,19 @@ export const rawHandler = async (
     startPostUrl = parts[2];
   }
 
-  const [loadedPosts, following, userSettings] = await Promise.all([
-    listFeedFromUserFeedRecord(requesterDid, limit, startDate, startPostUrl),
+  const [
+    { posts: loadedPosts, cursor: sourceCursor },
+    following,
+    userSettings,
+  ] = await Promise.all([
+    isKikoragi
+      ? fetchKikorangi(limit, cursor)
+      : listFeedFromUserFeedRecord(
+          requesterDid,
+          limit,
+          startDate,
+          startPostUrl
+        ),
     getSubscriberFollowingRecord(requesterDid),
     getUserSettings(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
@@ -487,12 +530,13 @@ export const rawHandler = async (
   );
 
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
-    await (isBeta
+    await (isBeta || isKikoragi
       ? filterFeedContentBeta(
           loadedPosts,
           following,
           activeMuteWords,
-          muteRetweetsFrom
+          muteRetweetsFrom,
+          !isKikoragi
         )
       : filterFeedContent(
           loadedPosts,
@@ -502,17 +546,21 @@ export const rawHandler = async (
         ));
 
   let nextCursor: string | undefined = undefined;
-  const nextPost = filteredFeedContent[limit];
-  if (nextPost == null) {
-    filteredFeedContent.push({
-      post: {
-        uri: NO_MORE_POSTS_POST,
-        type: 'post',
-      } as FeedEntry,
-    });
+  if (isKikoragi) {
+    nextCursor = sourceCursor;
   } else {
-    nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
-    filteredFeedContent = filteredFeedContent.slice(0, limit);
+    const nextPost = filteredFeedContent[limit];
+    if (nextPost == null) {
+      filteredFeedContent.push({
+        post: {
+          uri: NO_MORE_POSTS_POST,
+          type: 'post',
+        } as FeedEntry,
+      });
+    } else {
+      nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
+      filteredFeedContent = filteredFeedContent.slice(0, limit);
+    }
   }
   return {
     statusCode: 200,

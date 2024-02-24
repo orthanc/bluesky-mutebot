@@ -271,7 +271,10 @@ export const listFeedFromUserFeedRecord = async (
   limit: number,
   startDate: string | undefined,
   startPostUrl: string | undefined
-): Promise<Array<{ indexedAt: string; post: PostTableRecord }>> => {
+): Promise<{
+  posts: Array<{ indexedAt: string; post: PostTableRecord }>;
+  cursor?: string;
+}> => {
   const TableName = process.env.USER_FEED_TABLE as string;
   let posts: Array<{ indexedAt: string; post: PostTableRecord }> = [];
   let cursor: QueryCommandInput['ExclusiveStartKey'] = undefined;
@@ -319,5 +322,5 @@ export const listFeedFromUserFeedRecord = async (
     else posts = posts.slice(startFrom + 1);
   }
 
-  return posts;
+  return { posts };
 };
