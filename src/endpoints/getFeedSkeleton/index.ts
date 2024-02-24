@@ -468,6 +468,9 @@ export const rawHandler = async (
 
   const isKikoragi = feed === process.env.KIKORANGI_FEED_URL;
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
+  const isFollowerBased =
+    feed === process.env.FOLLOWING_FEED_URL ||
+    feed === process.env.BETA_FOLLOWING_FEED_URL;
 
   let startDate: string | undefined = undefined;
   let startPostUrl: string | undefined = undefined;
@@ -497,7 +500,7 @@ export const rawHandler = async (
       : Promise.resolve(),
   ]);
 
-  if (Object.keys(following?.following ?? {}).length === 0) {
+  if (isFollowerBased && Object.keys(following?.following ?? {}).length === 0) {
     console.log(`Returning First View Post`);
     return {
       statusCode: 200,
@@ -530,13 +533,13 @@ export const rawHandler = async (
   );
 
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
-    await (isBeta || isKikoragi
+    await (isBeta || !isFollowerBased
       ? filterFeedContentBeta(
           loadedPosts,
           following,
           activeMuteWords,
           muteRetweetsFrom,
-          !isKikoragi
+          isFollowerBased
         )
       : filterFeedContent(
           loadedPosts,
