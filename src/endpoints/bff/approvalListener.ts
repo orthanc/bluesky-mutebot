@@ -16,7 +16,7 @@ import { OperationsSubscription } from '../readFirehose/firehoseSubscription/sub
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 import { getBskyAgent } from '../../bluesky';
 // import { renderBleetToAuthorise } from './components/BleetToAuthorise';
-import { getMuteWords } from '../../muteWordsStore';
+import { getUserSettings } from '../../muteWordsStore';
 // import { renderMuteWordsContent } from './components/MuteWordsContent';
 
 const client = new ApiGatewayManagementApiClient({
@@ -80,7 +80,7 @@ export const rawHandler = async (
   const profile = await agent.getProfile({ actor: approvalPost.author });
 
   const [muteWords] = await Promise.all([
-    getMuteWords(profile.data.did),
+    getUserSettings(profile.data.did),
     authorizeSession({
       sessionId,
       subscriberDid: profile.data.did,

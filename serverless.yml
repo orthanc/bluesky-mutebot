@@ -83,11 +83,13 @@ functions:
     handler: ./src/endpoints/bff/web.handler
     events:
       - httpApi: GET /
+      - httpApi: GET /retweet-settings
       - httpApi: POST /login/session
       - httpApi: GET /login/session/auth-code
       - httpApi: GET /login/session/approval
       - httpApi: POST /logout
       - httpApi: POST /mutewords
+      - httpApi: POST /followed-user
     environment:
       MUTEBOT_CSS_NAME: ${file('./resolveMutebotCss.js')}
     iamRoleStatements:
@@ -116,6 +118,11 @@ functions:
           - dynamodb:UpdateItem
         Resource:
           - !GetAtt UserSettingsTable.Arn
+      - Effect: "Allow"
+        Action:
+          - dynamodb:GetItem
+        Resource:
+          - !GetAtt SubscriberFollowingTable.Arn
 
   bff-approval-listener:
     handler: ./src/endpoints/bff/approvalListener.handler

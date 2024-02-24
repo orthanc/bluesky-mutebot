@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 import {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -17,16 +18,28 @@ import { EstablishingSession } from './EstablishingSession';
 import { BleetToAuthorise } from './BleetToAuthorise';
 import { MuteWordsContent } from './MuteWordsContent';
 import {
+  FollowedUserSettings,
+  addFollowedUserSettings,
   addMuteWord,
+  deleteFollowedUserSettings,
   deleteMuteWord,
-  getMuteWords,
+  getUserSettings,
+  updateFollowedUserRetweetMuted,
 } from '../../../muteWordsStore';
 import cookie from 'cookie';
 import { Login } from './Login';
-import { Body } from './Body';
+import { Body, PageId } from './Body';
 import { Content } from './Content';
 import { AddMuteWord, MuteWord, MuteWordListItem } from './MuteWords.';
 import { addDays, addHours, addMonths, addWeeks, addYears } from 'date-fns';
+import { getSubscriberFollowingRecord } from '../../../followingStore';
+import { RetweetSettingsContent } from './RetweetSettingsContent';
+import { z } from 'zod';
+import {
+  AddFollowedUser,
+  FollowedUser,
+  FollowedUserListItem,
+} from './RetweetSettings';
 
 export type WebEvent = APIGatewayProxyEventV2;
 
@@ -77,18 +90,36 @@ const getAuthorizedSession = async (
 const renderPage = async (
   path: string,
   session: AuthorizedSessionRecord
-): Promise<ResponseFragment> => {
+): Promise<ResponseFragment & { page: PageId }> => {
   switch (path) {
     case '/': {
-      const muteWords = await getMuteWords(session.subscriberDid);
+      const userSettings = await getUserSettings(session.subscriberDid);
       return {
         node: (
           <MuteWordsContent
             handle={session.subscriberHandle}
-            muteWords={muteWords}
+            muteWords={userSettings.muteWords}
             now={new Date().toISOString()}
           />
         ),
+        page: 'mute-words',
+      };
+    }
+    case '/retweet-settings': {
+      const [userSettings, following] = await Promise.all([
+        getUserSettings(session.subscriberDid),
+        getSubscriberFollowingRecord(session.subscriberDid),
+      ]);
+      return {
+        node: (
+          <RetweetSettingsContent
+            handle={session.subscriberHandle}
+            following={following.following}
+            followedUserSettings={userSettings.followedUserSettings}
+            now={new Date().toISOString()}
+          />
+        ),
+        page: 'followed-user-settings',
       };
     }
   }
@@ -157,11 +188,11 @@ const processLoginRequest = async (
         );
 
         const url = new URL(event.headers['hx-current-url'] as string);
-        const { node, headers } = await renderPage(url.pathname, session);
+        const { node, headers, page } = await renderPage(url.pathname, session);
 
         return {
           node: (
-            <Body isLoggedIn={true}>
+            <Body isLoggedIn={true} page={page}>
               <Content>{node}</Content>
             </Body>
           ),
@@ -233,6 +264,34 @@ const calculateMuteUntil = (
   }
 };
 
+const muteRetweetsUntilSchema = z.enum([
+  'forever',
+  '1h',
+  '3h',
+  '12h',
+  '1d',
+  '1w',
+  '1m',
+  '1y',
+]);
+const followedUserBodySchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('add'),
+    followedDid: z.string(),
+    handle: z.string(),
+    muteRetweetsUntil: muteRetweetsUntilSchema,
+  }),
+  z.object({
+    action: z.literal('updateMuteRetweetsUntil'),
+    followedDid: z.string(),
+    muteRetweetsUntil: muteRetweetsUntilSchema,
+  }),
+  z.object({
+    action: z.literal('remove'),
+    followedDid: z.string(),
+  }),
+]);
+
 export const renderResponse = async (
   event: WebEvent
 ): Promise<APIGatewayProxyResultV2> => {
@@ -256,7 +315,7 @@ export const renderResponse = async (
         return createHttpResponse({
           node: (
             <Page>
-              <Body isLoggedIn={false}>
+              <Body isLoggedIn={false} page="login">
                 <Login />
               </Body>
             </Page>
@@ -265,14 +324,14 @@ export const renderResponse = async (
         });
       }
 
-      const { node, headers } = await renderPage(
+      const { node, headers, page } = await renderPage(
         event.requestContext.http.path,
         session
       );
       return createHttpResponse({
         node: (
           <Page csrfToken={csrfToken}>
-            <Body isLoggedIn={true}>
+            <Body isLoggedIn={true} page={page}>
               <Content>{node}</Content>
             </Body>
           </Page>
@@ -328,10 +387,80 @@ export const renderResponse = async (
           body: '',
         };
       }
+      case 'POST /followed-user': {
+        const body = followedUserBodySchema.parse(event.body);
+        const now = new Date();
+        if (body.action === 'add') {
+          const [followedUser, following] = await Promise.all([
+            addFollowedUserSettings(
+              session.subscriberDid,
+              body.followedDid,
+              body.handle,
+              calculateMuteUntil(body.muteRetweetsUntil, now) ?? 'forever'
+            ),
+            getSubscriberFollowingRecord(session.subscriberDid),
+          ]);
+
+          return createHttpResponse({
+            node: [
+              <FollowedUserListItem>
+                <FollowedUser
+                  followedUserDid={body.followedDid}
+                  followedUser={followedUser}
+                  now={now.toISOString()}
+                />
+              </FollowedUserListItem>,
+              <AddFollowedUser
+                oob={true}
+                following={following.following}
+                muteUntil={body.muteRetweetsUntil}
+              />,
+            ],
+          });
+        } else if (body.action === 'updateMuteRetweetsUntil') {
+          const muteRetweetsUntil =
+            calculateMuteUntil(body.muteRetweetsUntil, now) ?? 'forever';
+          const [userSettings] = await Promise.all([
+            getUserSettings(session.subscriberDid),
+            updateFollowedUserRetweetMuted(
+              session.subscriberDid,
+              body.followedDid,
+              muteRetweetsUntil
+            ),
+          ]);
+
+          const followedUser: FollowedUserSettings = {
+            ...userSettings.followedUserSettings[body.followedDid],
+            muteRetweetsUntil,
+          };
+
+          return createHttpResponse({
+            node: [
+              <FollowedUser
+                followedUserDid={body.followedDid}
+                followedUser={followedUser}
+                now={now.toISOString()}
+              />,
+            ],
+          });
+        } else if (body.action === 'remove') {
+          await deleteFollowedUserSettings(
+            session.subscriberDid,
+            body.followedDid
+          );
+
+          return {
+            statusCode: 200,
+            body: '',
+          };
+        }
+        // @ts-expect-error
+        throw new httpError.BadRequest(`Unknown action ${body.action}`);
+      }
       case 'POST /logout': {
         return createHttpResponse({
           node: (
-            <Body isLoggedIn={false}>
+            <Body isLoggedIn={false} page="login">
               <Login />
             </Body>
           ),

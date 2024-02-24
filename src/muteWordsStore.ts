@@ -22,9 +22,19 @@ export type MutedWord = { word: string } & (
   | { forever: false; muteUntil: string }
 );
 
-export const getMuteWords = async (
+export type FollowedUserSettings = {
+  handle: string;
+  muteRetweetsUntil: string;
+};
+
+export type UserSettings = {
+  muteWords: Array<MutedWord>;
+  followedUserSettings: Record<string, FollowedUserSettings>;
+};
+
+export const getUserSettings = async (
   subscriberDid: string
-): Promise<Array<MutedWord>> => {
+): Promise<UserSettings> => {
   const result = await ddbDocClient.send(
     new GetCommand({
       TableName: USER_SETTINGS_TABLE,
@@ -33,25 +43,36 @@ export const getMuteWords = async (
       },
     })
   );
-  if (result.Item == null) return [];
-  return Object.entries(result.Item)
-    .filter(([key]) => key.startsWith('mute_'))
-    .map(([key, value]): MutedWord => {
-      const word = key.substring('mute_'.length);
-      if (value === true) {
+  if (result.Item == null) return { muteWords: [], followedUserSettings: {} };
+  return {
+    muteWords: Object.entries(result.Item)
+      .filter(([key]) => key.startsWith('mute_'))
+      .map(([key, value]): MutedWord => {
+        const word = key.substring('mute_'.length);
+        if (value === true) {
+          return {
+            word,
+            forever: true,
+          };
+        }
+        const val = value as MuteWordValue;
         return {
+          ...val,
           word,
-          forever: true,
+          forever: false,
         };
-      }
-      const val = value as MuteWordValue;
-      return {
-        ...val,
-        word,
-        forever: false,
-      };
-    })
-    .sort((a, b) => a.word.localeCompare(b.word));
+      })
+      .sort((a, b) => a.word.localeCompare(b.word)),
+    followedUserSettings: Object.fromEntries(
+      Object.entries(result.Item)
+        .filter(([key]) => key.startsWith('followed_'))
+        .map(([key, value]): [string, FollowedUserSettings] => {
+          const followedDid = key.substring('followed_'.length);
+          return [followedDid, value as FollowedUserSettings];
+        })
+        .sort(([, { handle: a }], [, { handle: b }]) => a.localeCompare(b))
+    ),
+  };
 };
 
 export const deleteMuteWord = async (
@@ -100,4 +121,72 @@ export const addMuteWord = async (
   return muteUntil == null
     ? { word: muteWord, forever: true }
     : { word: muteWord, forever: false, muteUntil };
+};
+
+export const addFollowedUserSettings = async (
+  subscriberDid: string,
+  followedDid: string,
+  followedHandle: string,
+  muteRetweetsUntil: string
+): Promise<FollowedUserSettings> => {
+  const value: FollowedUserSettings = {
+    handle: followedHandle,
+    muteRetweetsUntil,
+  };
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName: USER_SETTINGS_TABLE,
+      Key: {
+        subscriberDid,
+      },
+      UpdateExpression: 'SET #followed = :value',
+      ExpressionAttributeNames: {
+        '#followed': `followed_${followedDid}`,
+      },
+      ExpressionAttributeValues: {
+        ':value': value,
+      },
+    })
+  );
+  return value;
+};
+
+export const updateFollowedUserRetweetMuted = async (
+  subscriberDid: string,
+  followedDid: string,
+  muteRetweetsUntil: string
+): Promise<void> => {
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName: USER_SETTINGS_TABLE,
+      Key: {
+        subscriberDid,
+      },
+      UpdateExpression: 'SET #followed.muteRetweetsUntil = :value',
+      ExpressionAttributeNames: {
+        '#followed': `followed_${followedDid}`,
+      },
+      ExpressionAttributeValues: {
+        ':value': muteRetweetsUntil,
+      },
+    })
+  );
+};
+
+export const deleteFollowedUserSettings = async (
+  subscriberDid: string,
+  followedDid: string
+): Promise<void> => {
+  await ddbDocClient.send(
+    new UpdateCommand({
+      TableName: USER_SETTINGS_TABLE,
+      Key: {
+        subscriberDid,
+      },
+      UpdateExpression: 'REMOVE #followed',
+      ExpressionAttributeNames: {
+        '#followed': `followed_${followedDid}`,
+      },
+    })
+  );
 };

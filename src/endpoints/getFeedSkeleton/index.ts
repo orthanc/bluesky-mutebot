@@ -16,7 +16,7 @@ import {
   PostTableRecord,
   listFeedFromUserFeedRecord,
 } from '../../postsStore';
-import { getMuteWords } from '../../muteWordsStore';
+import { getUserSettings } from '../../muteWordsStore';
 import { getBskyAgent } from '../../bluesky';
 import { postToPostTableRecord } from '../readFirehose/postToPostTableRecord';
 
@@ -70,7 +70,8 @@ const resolvePosts = async (
 const filterFeedContent = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
-  muteWords: Array<string>
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -120,6 +121,8 @@ const filterFeedContent = async (
 
   const filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
+      if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
+        return false;
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -185,7 +188,8 @@ const filterFeedContent = async (
 const filterFeedContentBeta = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
-  muteWords: Array<string>
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -235,6 +239,8 @@ const filterFeedContentBeta = async (
 
   let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
+      if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
+        return false;
       const post =
         loadedPosts[
           postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
@@ -439,10 +445,10 @@ export const rawHandler = async (
     startPostUrl = parts[2];
   }
 
-  const [loadedPosts, following, muteWords] = await Promise.all([
+  const [loadedPosts, following, userSettings] = await Promise.all([
     listFeedFromUserFeedRecord(requesterDid, limit, startDate, startPostUrl),
     getSubscriberFollowingRecord(requesterDid),
-    getMuteWords(requesterDid),
+    getUserSettings(requesterDid),
     cursor == null && requesterDid !== process.env.BLUESKY_SERVICE_USER_DID
       ? triggerSubscriberSync(requesterDid)
       : Promise.resolve(),
@@ -466,14 +472,34 @@ export const rawHandler = async (
   }
 
   const now = new Date().toISOString();
-  const activeMuteWords = muteWords
+  const activeMuteWords = userSettings.muteWords
     .filter((muteWord) => muteWord.forever || muteWord.muteUntil > now)
     .map((muteWord) => muteWord.word.toLowerCase().trim());
 
+  const muteRetweetsFrom = new Set(
+    Object.entries(userSettings.followedUserSettings)
+      .filter(
+        ([, followedSettings]) =>
+          followedSettings.muteRetweetsUntil === 'forever' ||
+          followedSettings.muteRetweetsUntil > now
+      )
+      .map(([did]) => did)
+  );
+
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
     await (isBeta
-      ? filterFeedContentBeta(loadedPosts, following, activeMuteWords)
-      : filterFeedContent(loadedPosts, following, activeMuteWords));
+      ? filterFeedContentBeta(
+          loadedPosts,
+          following,
+          activeMuteWords,
+          muteRetweetsFrom
+        )
+      : filterFeedContent(
+          loadedPosts,
+          following,
+          activeMuteWords,
+          muteRetweetsFrom
+        ));
 
   let nextCursor: string | undefined = undefined;
   const nextPost = filteredFeedContent[limit];
