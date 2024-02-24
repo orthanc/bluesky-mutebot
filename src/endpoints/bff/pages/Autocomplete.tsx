@@ -66,7 +66,7 @@ export const Autocomplete = ({
         type="text"
         x-model="filter"
         placeholder="Search by handle..."
-        className="border-slate-300 border w-full p-2"
+        className="border-slate-300 border w-full p-2 dark:bg-slate-600"
         x-on:focus="open = true"
         x-bind:data-valid="!selectedItem"
         {...{
@@ -87,7 +87,7 @@ export const Autocomplete = ({
           <li
             x-text="entry.display"
             x-on:click="selectItem(index)"
-            x-bind:class="'border-slate-300 border-b p-2' + (index === selectedIndex ? ' bg-blue-100' : '')"
+            x-bind:class="'border-slate-300 border-b p-2' + (index === selectedIndex ? ' bg-blue-100 dark:bg-blue-900' : '')"
           />
           {/* @ts-expect-error */}
         </template>
