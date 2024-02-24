@@ -7,7 +7,7 @@ export const MuteFor: preact.FunctionComponent<{
     {...(showWhen ? { 'x-show': showWhen } : {})}
     name={name}
     autoComplete="off"
-    className="py-2 px-8 border rounded-lg"
+    className="py-2 px-8 border rounded-lg dark:bg-slate-600"
   >
     {selected == null ? (
       <option value="null" selected>
