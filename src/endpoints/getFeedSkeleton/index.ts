@@ -71,7 +71,8 @@ const filterFeedContent = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
   muteWords: Array<string>,
-  muteRetweetsFrom: Set<string>
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean
 ): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
@@ -93,8 +94,9 @@ const filterFeedContent = async (
       ) {
         // And it is a reply to someone followed (otherwise it would be filtered out anyway)
         if (
-          post.replyParentAuthorDid != null &&
-          followingDids.has(post.replyParentAuthorDid)
+          !filterRepliesToFollowed ||
+          (post.replyParentAuthorDid != null &&
+            followingDids.has(post.replyParentAuthorDid))
         ) {
           postUris.add(post.replyParentUri);
         }
@@ -119,7 +121,7 @@ const filterFeedContent = async (
     totalPosts: Object.keys(loadedPosts).length,
   });
 
-  const filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
+  let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
       if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
         return false;
@@ -163,7 +165,7 @@ const filterFeedContent = async (
 
       // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
       // to be shared wider
-      if (postRef.type !== 'repost') {
+      if (filterRepliesToFollowed && postRef.type !== 'repost') {
         // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
         if (
           post.startsWithMention &&
@@ -182,6 +184,76 @@ const filterFeedContent = async (
       }
       return true;
     });
+
+  // Determine the highest index that each post and external link is
+  const firstSeenPost: Record<string, number> = {};
+  const firstSeenExternal: Record<string, number> = {};
+  filteredFeedContent.forEach(({ post: postRef }, index) => {
+    const postUri =
+      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+    firstSeenPost[postUri] = index;
+    const post = loadedPosts[postUri];
+    if (post?.type === 'post') {
+      if (post.externalUri != null) {
+        firstSeenExternal[post.externalUri] = index;
+      }
+
+      if (post.replyParentUri != null) {
+        const parentPost = loadedPosts[post.replyParentUri];
+        if (parentPost == null || parentPost.type === 'post') {
+          if (parentPost.externalUri != null) {
+            firstSeenExternal[parentPost.externalUri] = index;
+          }
+          if (parentPost.quotedPostUri != null) {
+            firstSeenExternal[parentPost.quotedPostUri] = index;
+          }
+        }
+      }
+      if (post.quotedPostUri != null) {
+        const quotedPost = loadedPosts[post.quotedPostUri];
+        if (quotedPost == null || quotedPost.type === 'post') {
+          if (quotedPost.externalUri != null) {
+            firstSeenExternal[quotedPost.externalUri] = index;
+          }
+        }
+      }
+    }
+  });
+
+  filteredFeedContent = filteredFeedContent.filter(
+    ({ post: postRef }, index) => {
+      const postUri =
+        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+      if (firstSeenPost[postUri] !== index) {
+        console.log('skipping post');
+        return false;
+      }
+      const post = loadedPosts[postUri];
+      if (post?.type === 'post') {
+        if (
+          post.externalUri != null &&
+          firstSeenExternal[post.externalUri] !== index
+        ) {
+          console.log('skipping external');
+          return false;
+        }
+        if (post.quotedPostUri != null) {
+          const quotedPost = loadedPosts[post.quotedPostUri];
+          if (quotedPost == null || quotedPost.type === 'post') {
+            if (
+              quotedPost.externalUri != null &&
+              firstSeenExternal[quotedPost.externalUri] !== index
+            ) {
+              console.log('skipping quoted external');
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    }
+  );
+
   return filteredFeedContent;
 };
 
@@ -355,27 +427,6 @@ const filterFeedContentBeta = async (
           console.log('skipping external');
           return false;
         }
-        // I think I want to count the links and quotes from parent posts as they'll probably be shown
-        // but not filter out on the basis of parent poasts as blue sky is already de duplicating those
-        // if (post.replyParentUri != null) {
-        //   const parentPost = loadedPosts[post.replyParentUri];
-        //   if (parentPost == null || parentPost.type === 'post') {
-        //     if (
-        //       parentPost.externalUri != null &&
-        //       firstSeenExternal[parentPost.externalUri] !== index
-        //     ) {
-        //       console.log('skipping parent external');
-        //       return false;
-        //     }
-        //     if (
-        //       parentPost.quotedPostUri != null &&
-        //       firstSeenExternal[parentPost.quotedPostUri] !== index
-        //     ) {
-        //       console.log('skipping parent quote');
-        //       return false;
-        //     }
-        //   }
-        // }
         if (post.quotedPostUri != null) {
           const quotedPost = loadedPosts[post.quotedPostUri];
           if (quotedPost == null || quotedPost.type === 'post') {
@@ -468,6 +519,9 @@ export const rawHandler = async (
 
   const isKikoragi = feed === process.env.KIKORANGI_FEED_URL;
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
+  const isFollowerBased =
+    feed === process.env.FOLLOWING_FEED_URL ||
+    feed === process.env.BETA_FOLLOWING_FEED_URL;
 
   let startDate: string | undefined = undefined;
   let startPostUrl: string | undefined = undefined;
@@ -497,7 +551,7 @@ export const rawHandler = async (
       : Promise.resolve(),
   ]);
 
-  if (Object.keys(following?.following ?? {}).length === 0) {
+  if (isFollowerBased && Object.keys(following?.following ?? {}).length === 0) {
     console.log(`Returning First View Post`);
     return {
       statusCode: 200,
@@ -530,19 +584,20 @@ export const rawHandler = async (
   );
 
   let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
-    await (isBeta || isKikoragi
+    await (isBeta
       ? filterFeedContentBeta(
           loadedPosts,
           following,
           activeMuteWords,
           muteRetweetsFrom,
-          !isKikoragi
+          isFollowerBased
         )
       : filterFeedContent(
           loadedPosts,
           following,
           activeMuteWords,
           muteRetweetsFrom
+          isFollowerBased
         ));
 
   let nextCursor: string | undefined = undefined;

@@ -70,7 +70,10 @@ export const postToPostTableRecord = (
     textEntries.push(embed.external.description);
     externalDetails = { externalUri: embed.external.uri };
   }
-  if (isRecordEmbed(embed)) {
+  if (
+    isRecordEmbed(embed) &&
+    embed.record.uri.includes('/app.bsky.feed.post/')
+  ) {
     quoteDetails = {
       quotedPostUri: embed.record.uri,
       quotedPostAuthorDid: getAuthorFromPostUri(embed.record.uri),
