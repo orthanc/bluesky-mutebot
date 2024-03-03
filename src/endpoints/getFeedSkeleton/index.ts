@@ -26,6 +26,8 @@ const SYNCING_FOLLOING_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiegyf3x2w';
 const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
+const REPOSTS_DROPPED_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kmrm4hqefm2s';
 
 const resolvePosts = async (
   postUris: Array<string>
@@ -375,6 +377,39 @@ const filterFeedContentBeta = async (
       return true;
     });
 
+  const repostsByPoster: Record<
+    string,
+    Array<string>
+  > = filteredFeedContent.reduce<Record<string, Array<string>>>(
+    (acc, { post }) => {
+      if (post.type === 'repost') {
+        const reposts = acc[post.author] ?? [];
+        acc[post.author] = reposts;
+        reposts.push(post.uri);
+      }
+      return acc;
+    },
+    {}
+  );
+  // Keep the oldest two reposts by each author, everything else is a candidate to be dropped
+  // to reduce repost floods
+  const repostsToDrop = new Set(
+    Object.values(repostsByPoster).flatMap((uris) => uris.slice(0, -3))
+  );
+  filteredFeedContent = filteredFeedContent.filter(
+    ({ post }) => !repostsToDrop.has(post.uri)
+  );
+
+  if (repostsToDrop.size > 0) {
+    filteredFeedContent.unshift({
+      indexedAt: '',
+      post: {
+        type: 'post',
+        uri: REPOSTS_DROPPED_POST,
+      } as FeedEntry,
+    });
+  }
+
   // Determine the highest index that each post and external link is
   const firstSeenPost: Record<string, number> = {};
   const firstSeenExternal: Record<string, number> = {};
@@ -596,7 +631,7 @@ export const rawHandler = async (
           loadedPosts,
           following,
           activeMuteWords,
-          muteRetweetsFrom
+          muteRetweetsFrom,
           isFollowerBased
         ));
 
