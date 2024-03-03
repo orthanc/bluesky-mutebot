@@ -596,7 +596,7 @@ export const rawHandler = async (
           loadedPosts,
           following,
           activeMuteWords,
-          muteRetweetsFrom
+          muteRetweetsFrom,
           isFollowerBased
         ));
 
