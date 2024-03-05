@@ -391,10 +391,10 @@ const filterFeedContentBeta = async (
     },
     {}
   );
-  // Keep the oldest two reposts by each author, everything else is a candidate to be dropped
+  // Keep the oldest five reposts by each author, everything else is a candidate to be dropped
   // to reduce repost floods
   const repostsToDrop = new Set(
-    Object.values(repostsByPoster).flatMap((uris) => uris.slice(0, -3))
+    Object.values(repostsByPoster).flatMap((uris) => uris.slice(0, -5))
   );
   filteredFeedContent = filteredFeedContent.filter(
     ({ post }) => !repostsToDrop.has(post.uri)
