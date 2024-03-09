@@ -377,39 +377,6 @@ const filterFeedContentBeta = async (
       return true;
     });
 
-  const repostsByPoster: Record<
-    string,
-    Array<string>
-  > = filteredFeedContent.reduce<Record<string, Array<string>>>(
-    (acc, { post }) => {
-      if (post.type === 'repost') {
-        const reposts = acc[post.author] ?? [];
-        acc[post.author] = reposts;
-        reposts.push(post.uri);
-      }
-      return acc;
-    },
-    {}
-  );
-  // Keep the oldest five reposts by each author, everything else is a candidate to be dropped
-  // to reduce repost floods
-  const repostsToDrop = new Set(
-    Object.values(repostsByPoster).flatMap((uris) => uris.slice(0, -5))
-  );
-  filteredFeedContent = filteredFeedContent.filter(
-    ({ post }) => !repostsToDrop.has(post.uri)
-  );
-
-  if (repostsToDrop.size > 0) {
-    filteredFeedContent.unshift({
-      indexedAt: '',
-      post: {
-        type: 'post',
-        uri: REPOSTS_DROPPED_POST,
-      } as FeedEntry,
-    });
-  }
-
   // Determine the highest index that each post and external link is
   const firstSeenPost: Record<string, number> = {};
   const firstSeenExternal: Record<string, number> = {};
@@ -540,6 +507,7 @@ export const rawHandler = async (
   if (
     feed !== process.env.FOLLOWING_FEED_URL &&
     feed !== process.env.BETA_FOLLOWING_FEED_URL &&
+    feed !== process.env.DROPPED_POSTS_FEED_URL &&
     feed !== process.env.KIKORANGI_FEED_URL
   ) {
     console.log(`Unknown Feed ${feed}`);
@@ -553,7 +521,9 @@ export const rawHandler = async (
   }
 
   const isKikoragi = feed === process.env.KIKORANGI_FEED_URL;
-  const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
+  const isBeta =
+    feed === process.env.BETA_FOLLOWING_FEED_URL ||
+    feed === process.env.DROPPED_POSTS_FEED_URL;
   const isFollowerBased = feed === process.env.FOLLOWING_FEED_URL || isBeta;
 
   let startDate: string | undefined = undefined;
@@ -635,6 +605,54 @@ export const rawHandler = async (
   let nextCursor: string | undefined = undefined;
   if (isKikoragi) {
     nextCursor = sourceCursor;
+  } else if (isBeta) {
+    const repostUrls: Record<string, Array<string>> = {};
+    let feedWithRemovedRetweets: typeof filteredFeedContent = [];
+    const droppedPosts: typeof filteredFeedContent = [];
+    let addedNotificationPost = false;
+    for (const post of filteredFeedContent) {
+      if (feedWithRemovedRetweets.length > limit) {
+        break;
+      }
+      feedWithRemovedRetweets.push(post);
+      if (post.post.type === 'repost') {
+        const repostUrlsForUser = repostUrls[post.post.author] ?? [];
+        repostUrls[post.post.author] = repostUrlsForUser;
+        repostUrlsForUser.push(post.post.uri);
+        if (repostUrlsForUser.length > 5) {
+          const toRemoveUri = repostUrlsForUser.shift() as string;
+          const removedPost = feedWithRemovedRetweets.find(
+            ({ post }) => post.uri === toRemoveUri
+          );
+          if (removedPost != null) {
+            feedWithRemovedRetweets = feedWithRemovedRetweets.filter(
+              ({ post }) => post.uri !== toRemoveUri
+            );
+            droppedPosts.push(removedPost);
+
+            if (!addedNotificationPost) {
+              feedWithRemovedRetweets.unshift({
+                indexedAt: '',
+                post: {
+                  type: 'post',
+                  uri: REPOSTS_DROPPED_POST,
+                } as FeedEntry,
+              });
+              addedNotificationPost = true;
+            }
+          }
+        }
+      }
+    }
+    filteredFeedContent = feedWithRemovedRetweets;
+    const nextPost = filteredFeedContent[limit];
+    filteredFeedContent = filteredFeedContent.slice(0, limit);
+    if (nextPost != null) {
+      nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
+    }
+    if (feed === process.env.DROPPED_POSTS_FEED_URL) {
+      filteredFeedContent = droppedPosts;
+    }
   } else {
     const nextPost = filteredFeedContent[limit];
     if (nextPost == null) {

@@ -197,6 +197,7 @@ functions:
       FOLLOWING_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
       BETA_FOLLOWING_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/beta-following-feed-url}
       KIKORANGI_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/kikorangi-feed-url}
+      DROPPED_POSTS_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/dropped-posts-feed-url}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
