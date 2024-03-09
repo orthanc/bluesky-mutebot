@@ -621,7 +621,7 @@ export const rawHandler = async (
     const feedWithRemovedRetweets: typeof filteredFeedContent = [];
     const droppedPosts: typeof filteredFeedContent = [];
     let addedNotificationPost = false;
-    let window: typeof filteredFeedContent = [];
+    const window: typeof filteredFeedContent = [];
     for (const post of filteredFeedContent) {
       if (feedWithRemovedRetweets.length > limit) {
         break;
@@ -641,7 +641,7 @@ export const rawHandler = async (
         if (toRemoveIndex !== -1) {
           const removedPost = window[toRemoveIndex];
           droppedPosts.push(removedPost);
-          window = window.splice(toRemoveIndex, 1);
+          window.splice(toRemoveIndex, 1);
 
           if (!addedNotificationPost) {
             feedWithRemovedRetweets.unshift({
