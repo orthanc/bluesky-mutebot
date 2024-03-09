@@ -75,7 +75,7 @@ const filterFeedContent = async (
   muteWords: Array<string>,
   muteRetweetsFrom: Set<string>,
   filterRepliesToFollowed: boolean
-): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
+): Promise<Array<{ indexedAt?: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
@@ -265,7 +265,7 @@ const filterFeedContentBeta = async (
   muteWords: Array<string>,
   muteRetweetsFrom: Set<string>,
   filterRepliesToFollowed: boolean
-): Promise<Array<{ indexedAt: string; post: FeedEntry }>> => {
+): Promise<Array<{ indexedAt?: string; post: FeedEntry }>> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
@@ -554,9 +554,7 @@ export const rawHandler = async (
 
   const isKikoragi = feed === process.env.KIKORANGI_FEED_URL;
   const isBeta = feed === process.env.BETA_FOLLOWING_FEED_URL;
-  const isFollowerBased =
-    feed === process.env.FOLLOWING_FEED_URL ||
-    feed === process.env.BETA_FOLLOWING_FEED_URL;
+  const isFollowerBased = feed === process.env.FOLLOWING_FEED_URL || isBeta;
 
   let startDate: string | undefined = undefined;
   let startPostUrl: string | undefined = undefined;
@@ -618,22 +616,21 @@ export const rawHandler = async (
       .map(([did]) => did)
   );
 
-  let filteredFeedContent: Array<{ indexedAt?: string; post: FeedEntry }> =
-    await (isBeta
-      ? filterFeedContentBeta(
-          loadedPosts,
-          following,
-          activeMuteWords,
-          muteRetweetsFrom,
-          isFollowerBased
-        )
-      : filterFeedContent(
-          loadedPosts,
-          following,
-          activeMuteWords,
-          muteRetweetsFrom,
-          isFollowerBased
-        ));
+  let filteredFeedContent = await (isBeta
+    ? filterFeedContentBeta(
+        loadedPosts,
+        following,
+        activeMuteWords,
+        muteRetweetsFrom,
+        isFollowerBased
+      )
+    : filterFeedContent(
+        loadedPosts,
+        following,
+        activeMuteWords,
+        muteRetweetsFrom,
+        isFollowerBased
+      ));
 
   let nextCursor: string | undefined = undefined;
   if (isKikoragi) {
