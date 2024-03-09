@@ -29,6 +29,8 @@ const NO_MORE_POSTS_POST =
 const REPOSTS_DROPPED_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kmrm4hqefm2s';
 
+const WINDOW_SIZE = 3;
+
 const resolvePosts = async (
   postUris: Array<string>
 ): Promise<Record<string, PostTableRecord>> => {
@@ -606,44 +608,46 @@ export const rawHandler = async (
   if (isKikoragi) {
     nextCursor = sourceCursor;
   } else if (isBeta) {
-    const repostUrls: Record<string, Array<string>> = {};
-    let feedWithRemovedRetweets: typeof filteredFeedContent = [];
+    const feedWithRemovedRetweets: typeof filteredFeedContent = [];
     const droppedPosts: typeof filteredFeedContent = [];
     let addedNotificationPost = false;
+    let window: typeof filteredFeedContent = [];
     for (const post of filteredFeedContent) {
       if (feedWithRemovedRetweets.length > limit) {
         break;
       }
-      feedWithRemovedRetweets.push(post);
+      if (window.length >= WINDOW_SIZE) {
+        const firstPost = window.shift();
+        if (firstPost != null) {
+          feedWithRemovedRetweets.push(firstPost);
+        }
+      }
       if (post.post.type === 'repost') {
-        const repostUrlsForUser = repostUrls[post.post.author] ?? [];
-        repostUrls[post.post.author] = repostUrlsForUser;
-        repostUrlsForUser.push(post.post.uri);
-        if (repostUrlsForUser.length > 5) {
-          const toRemoveUri = repostUrlsForUser.shift() as string;
-          const removedPost = feedWithRemovedRetweets.find(
-            ({ post }) => post.uri === toRemoveUri
-          );
-          if (removedPost != null) {
-            feedWithRemovedRetweets = feedWithRemovedRetweets.filter(
-              ({ post }) => post.uri !== toRemoveUri
-            );
-            droppedPosts.push(removedPost);
+        const toRemoveIndex = window.findIndex(
+          ({ post: postInWindow }) =>
+            post.post.author === postInWindow.author &&
+            postInWindow.type === 'repost'
+        );
+        if (toRemoveIndex !== -1) {
+          const removedPost = window[toRemoveIndex];
+          droppedPosts.push(removedPost);
+          window = window.splice(toRemoveIndex, 1);
 
-            if (!addedNotificationPost) {
-              feedWithRemovedRetweets.unshift({
-                indexedAt: '',
-                post: {
-                  type: 'post',
-                  uri: REPOSTS_DROPPED_POST,
-                } as FeedEntry,
-              });
-              addedNotificationPost = true;
-            }
+          if (!addedNotificationPost) {
+            feedWithRemovedRetweets.unshift({
+              indexedAt: '',
+              post: {
+                type: 'post',
+                uri: REPOSTS_DROPPED_POST,
+              } as FeedEntry,
+            });
+            addedNotificationPost = true;
           }
         }
       }
+      window.push(post);
     }
+    feedWithRemovedRetweets.push(...window);
     filteredFeedContent = feedWithRemovedRetweets;
     const nextPost = filteredFeedContent[limit];
     filteredFeedContent = filteredFeedContent.slice(0, limit);
