@@ -667,7 +667,7 @@ export const rawHandler = async (
     if (feed === process.env.DROPPED_POSTS_FEED_URL) {
       filteredFeedContent = [
         ...droppedPosts,
-        ...filterResult.droppedPosts,
+        // ...filterResult.droppedPosts,
       ].sort((a, b) => {
         if (a.post.createdAt < b.post.createdAt) return 1;
         if (a.post.createdAt > b.post.createdAt) return -1;
