@@ -71,18 +71,11 @@ const resolvePosts = async (
   return loadedPosts;
 };
 
-const filterFeedContent = async (
+const loadPosts = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
-  following: FollowingRecord,
-  muteWords: Array<string>,
-  muteRetweetsFrom: Set<string>,
+  followingDids: Set<string>,
   filterRepliesToFollowed: boolean
-): Promise<{
-  feed: Array<{ indexedAt?: string; post: FeedEntry }>;
-  droppedPosts: Array<{ indexedAt?: string; post: FeedEntry }>;
-}> => {
-  const followingDids = new Set<string>();
-  Object.keys(following.following).forEach((did) => followingDids.add(did));
+) => {
   const loadedPosts: Record<string, PostTableRecord> = {};
   const postUris = new Set<string>();
   feedContent.forEach(({ post }) => {
@@ -127,6 +120,26 @@ const filterFeedContent = async (
     externallyResolvedPosts: postUris.size,
     totalPosts: Object.keys(loadedPosts).length,
   });
+  return loadedPosts;
+};
+
+const filterFeedContent = async (
+  feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
+  following: FollowingRecord,
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean
+): Promise<{
+  feed: Array<{ indexedAt?: string; post: FeedEntry }>;
+  droppedPosts: Array<{ indexedAt?: string; post: FeedEntry }>;
+}> => {
+  const followingDids = new Set<string>();
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
+  const loadedPosts = await loadPosts(
+    feedContent,
+    followingDids,
+    filterRepliesToFollowed
+  );
 
   let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
@@ -276,50 +289,11 @@ const filterFeedContentBeta = async (
 }> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
-  const loadedPosts: Record<string, PostTableRecord> = {};
-  const postUris = new Set<string>();
-  feedContent.forEach(({ post }) => {
-    if (post.type === 'post') {
-      loadedPosts[post.uri] = post;
-    } else {
-      postUris.add(post.repostedPostUri);
-    }
-  });
-  feedContent.forEach(({ post }) => {
-    if (post.type === 'post') {
-      // If it is a reply to a post we don't already have
-      if (
-        post.replyParentUri != null &&
-        loadedPosts[post.replyParentUri] == null
-      ) {
-        // And it is a reply to someone followed (otherwise it would be filtered out anyway)
-        if (
-          !filterRepliesToFollowed ||
-          (post.replyParentAuthorDid != null &&
-            followingDids.has(post.replyParentAuthorDid))
-        ) {
-          postUris.add(post.replyParentUri);
-        }
-      }
-
-      // If it's a quote of a post we don't already have
-      if (
-        post.quotedPostUri != null &&
-        loadedPosts[post.quotedPostUri] == null
-      ) {
-        postUris.add(post.quotedPostUri);
-      }
-    }
-  });
-  if (postUris.size > 0) {
-    const externallyResolvedPosts = await resolvePosts(Array.from(postUris));
-    Object.assign(loadedPosts, externallyResolvedPosts);
-  }
-  console.log({
-    feedPosts: feedContent.length,
-    externallyResolvedPosts: postUris.size,
-    totalPosts: Object.keys(loadedPosts).length,
-  });
+  const loadedPosts = await loadPosts(
+    feedContent,
+    followingDids,
+    filterRepliesToFollowed
+  );
 
   let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
     feedContent.filter(({ post: postRef }) => {
