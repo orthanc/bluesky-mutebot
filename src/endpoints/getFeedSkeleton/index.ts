@@ -77,7 +77,10 @@ const filterFeedContent = async (
   muteWords: Array<string>,
   muteRetweetsFrom: Set<string>,
   filterRepliesToFollowed: boolean
-): Promise<Array<{ indexedAt?: string; post: FeedEntry }>> => {
+): Promise<{
+  feed: Array<{ indexedAt?: string; post: FeedEntry }>;
+  droppedPosts: Array<{ indexedAt?: string; post: FeedEntry }>;
+}> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
@@ -258,7 +261,7 @@ const filterFeedContent = async (
     }
   );
 
-  return filteredFeedContent;
+  return { feed: filteredFeedContent, droppedPosts: [] };
 };
 
 const filterFeedContentBeta = async (
@@ -267,7 +270,10 @@ const filterFeedContentBeta = async (
   muteWords: Array<string>,
   muteRetweetsFrom: Set<string>,
   filterRepliesToFollowed: boolean
-): Promise<Array<{ indexedAt?: string; post: FeedEntry }>> => {
+): Promise<{
+  feed: Array<{ indexedAt?: string; post: FeedEntry }>;
+  droppedPosts: Array<{ indexedAt?: string; post: FeedEntry }>;
+}> => {
   const followingDids = new Set<string>();
   Object.keys(following.following).forEach((did) => followingDids.add(did));
   const loadedPosts: Record<string, PostTableRecord> = {};
@@ -414,41 +420,44 @@ const filterFeedContentBeta = async (
     }
   });
 
-  filteredFeedContent = filteredFeedContent.filter(
-    ({ post: postRef }, index) => {
-      const postUri =
-        postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
-      if (firstSeenPost[postUri] !== index) {
-        console.log('skipping post');
+  const droppedPosts: typeof filteredFeedContent = [];
+  filteredFeedContent = filteredFeedContent.filter((entry, index) => {
+    const { post: postRef } = entry;
+    const postUri =
+      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri;
+    if (firstSeenPost[postUri] !== index) {
+      console.log('skipping post');
+      droppedPosts.push(entry);
+      return false;
+    }
+    const post = loadedPosts[postUri];
+    if (post?.type === 'post') {
+      if (
+        post.externalUri != null &&
+        firstSeenExternal[post.externalUri] !== index
+      ) {
+        console.log('skipping external');
+        droppedPosts.push(entry);
         return false;
       }
-      const post = loadedPosts[postUri];
-      if (post?.type === 'post') {
-        if (
-          post.externalUri != null &&
-          firstSeenExternal[post.externalUri] !== index
-        ) {
-          console.log('skipping external');
-          return false;
-        }
-        if (post.quotedPostUri != null) {
-          const quotedPost = loadedPosts[post.quotedPostUri];
-          if (quotedPost == null || quotedPost.type === 'post') {
-            if (
-              quotedPost.externalUri != null &&
-              firstSeenExternal[quotedPost.externalUri] !== index
-            ) {
-              console.log('skipping quoted external');
-              return false;
-            }
+      if (post.quotedPostUri != null) {
+        const quotedPost = loadedPosts[post.quotedPostUri];
+        if (quotedPost == null || quotedPost.type === 'post') {
+          if (
+            quotedPost.externalUri != null &&
+            firstSeenExternal[quotedPost.externalUri] !== index
+          ) {
+            console.log('skipping quoted external');
+            droppedPosts.push(entry);
+            return false;
           }
         }
       }
-      return true;
     }
-  );
+    return true;
+  });
 
-  return filteredFeedContent;
+  return { feed: filteredFeedContent, droppedPosts };
 };
 
 const fetchKikorangi = async (
@@ -588,7 +597,7 @@ export const rawHandler = async (
       .map(([did]) => did)
   );
 
-  let filteredFeedContent = await (isBeta
+  const filterResult = await (isBeta
     ? filterFeedContentBeta(
         loadedPosts,
         following,
@@ -603,6 +612,7 @@ export const rawHandler = async (
         muteRetweetsFrom,
         isFollowerBased
       ));
+  let filteredFeedContent = filterResult.feed;
 
   let nextCursor: string | undefined = undefined;
   if (isKikoragi) {
@@ -655,7 +665,14 @@ export const rawHandler = async (
       nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
     }
     if (feed === process.env.DROPPED_POSTS_FEED_URL) {
-      filteredFeedContent = droppedPosts;
+      filteredFeedContent = [
+        ...droppedPosts,
+        ...filterResult.droppedPosts,
+      ].sort((a, b) => {
+        if (a.post.createdAt < b.post.createdAt) return 1;
+        if (a.post.createdAt > b.post.createdAt) return -1;
+        return 0;
+      });
     }
   } else {
     const nextPost = filteredFeedContent[limit];
