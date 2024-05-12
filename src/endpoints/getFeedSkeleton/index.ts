@@ -29,7 +29,9 @@ const NO_MORE_POSTS_POST =
 const REPOSTS_DROPPED_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kmrm4hqefm2s';
 
-const WINDOW_SIZE = 3;
+const SAME_AUTHOR_RETWEET_WINDOW_SIZE = 3;
+const SAME_QUOTED_TWEET_WINDOW_SIZE = 5;
+const SAME_EXTERNAL_WINDOW_SIZE = 5;
 
 const resolvePosts = async (
   postUris: Array<string>
@@ -277,6 +279,74 @@ const filterFeedContent = async (
   return { feed: filteredFeedContent, droppedPosts: [] };
 };
 
+const mutePost = (
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean,
+  followingDids: Set<string>,
+  loadedPosts: Record<string, PostTableRecord>,
+  postRef: FeedEntry
+): boolean => {
+  if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
+    return true;
+  const post =
+    loadedPosts[
+      postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
+    ];
+  // exclude posts we can't find
+  if (post == null) return true;
+  // should never happen, but for typing, if we get back a repost skip it
+  if (post.type === 'repost') return true;
+
+  // Exclude posts with muted words
+  if (
+    post.textEntries.some((postText) => {
+      const lowerText = postText.toLowerCase();
+      return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+    })
+  )
+    return true;
+
+  // Exclude replies to posts with muted words
+  for (const referencedPostUri of [post.replyParentUri, post.quotedPostUri]) {
+    if (referencedPostUri == null) continue;
+    const referencedPost = loadedPosts[referencedPostUri];
+    // Err on the side of caution, skip replies and quotes of posts we can't find
+    if (referencedPost == null || referencedPost.type !== 'post') return true;
+
+    // Don't return quotes or replies to posts with muted words
+    if (
+      referencedPost.textEntries.some((postText) => {
+        const lowerText = postText.toLowerCase();
+        return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
+      })
+    )
+      return true;
+  }
+
+  // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
+  // to be shared wider
+  if (filterRepliesToFollowed && postRef.type !== 'repost') {
+    // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
+    if (
+      post.startsWithMention &&
+      !post.mentionedDids.some((mentionedDid) =>
+        followingDids.has(mentionedDid)
+      )
+    )
+      return true;
+    // exclude replies that are to a non followed
+    if (
+      post.isReply &&
+      (post.replyParentAuthorDid == null ||
+        !followingDids.has(post.replyParentAuthorDid))
+    )
+      return true;
+  }
+
+  return false;
+};
+
 const filterFeedContentBeta = async (
   feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
   following: FollowingRecord,
@@ -296,68 +366,17 @@ const filterFeedContentBeta = async (
   );
 
   let filteredFeedContent: Array<{ indexedAt: string; post: FeedEntry }> =
-    feedContent.filter(({ post: postRef }) => {
-      if (postRef.type === 'repost' && muteRetweetsFrom.has(postRef.author))
-        return false;
-      const post =
-        loadedPosts[
-          postRef.type === 'post' ? postRef.uri : postRef.repostedPostUri
-        ];
-      // exclude posts we can't find
-      if (post == null) return false;
-      // should never happen, but for typing, if we get back a repost skip it
-      if (post.type === 'repost') return false;
-
-      // Exclude posts with muted words
-      if (
-        post.textEntries.some((postText) => {
-          const lowerText = postText.toLowerCase();
-          return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
-        })
-      )
-        return false;
-      // Exclude replies to posts with muted words
-      for (const referencedPostUri of [
-        post.replyParentUri,
-        post.quotedPostUri,
-      ]) {
-        if (referencedPostUri == null) continue;
-        const referencedPost = loadedPosts[referencedPostUri];
-        // Err on the side of caution, skip replies and quotes of posts we can't find
-        if (referencedPost == null || referencedPost.type !== 'post')
-          return false;
-
-        // Don't return quotes or replies to posts with muted words
-        if (
-          referencedPost.textEntries.some((postText) => {
-            const lowerText = postText.toLowerCase();
-            return muteWords.some((mutedWord) => lowerText.includes(mutedWord));
-          })
+    feedContent.filter(
+      ({ post: postRef }) =>
+        !mutePost(
+          muteWords,
+          muteRetweetsFrom,
+          filterRepliesToFollowed,
+          followingDids,
+          loadedPosts,
+          postRef
         )
-          return false;
-      }
-
-      // We don't filter out replies or @ mentions if they were reposted since repost indicates they want
-      // to be shared wider
-      if (filterRepliesToFollowed && postRef.type !== 'repost') {
-        // Exclude posts that start with an @ mention of a non following as these are basically replies to an non following
-        if (
-          post.startsWithMention &&
-          !post.mentionedDids.some((mentionedDid) =>
-            followingDids.has(mentionedDid)
-          )
-        )
-          return false;
-        // exclude replies that are to a non followed
-        if (
-          post.isReply &&
-          (post.replyParentAuthorDid == null ||
-            !followingDids.has(post.replyParentAuthorDid))
-        )
-          return false;
-      }
-      return true;
-    });
+    );
 
   // Determine the highest index that each post and external link is
   const firstSeenPost: Record<string, number> = {};
@@ -434,6 +453,220 @@ const filterFeedContentBeta = async (
   return { feed: filteredFeedContent, droppedPosts };
 };
 
+type PostWithIndex = { indexedAt?: string; post: FeedEntry };
+
+function* arrayGenerator<T>(arr: ReadonlyArray<T>) {
+  for (const element of arr) {
+    yield element;
+  }
+}
+
+function* filterMutedPosts(
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean,
+  followingDids: Set<string>,
+  loadedPosts: Record<string, PostTableRecord>,
+  gen: Generator<PostWithIndex>
+) {
+  for (const post of gen) {
+    if (
+      !mutePost(
+        muteWords,
+        muteRetweetsFrom,
+        filterRepliesToFollowed,
+        followingDids,
+        loadedPosts,
+        post.post
+      )
+    )
+      yield post;
+  }
+}
+
+const getPostUrl = ({ post }: PostWithIndex) =>
+  post.type === 'post' ? post.uri : post.repostedPostUri;
+
+const removeDuplicateFromBuffer = (
+  loadedPosts: Record<string, PostTableRecord>,
+  droppedPosts: Array<PostWithIndex>,
+  buffer: Array<PostWithIndex>,
+  windowSize: number,
+  getKey: (entry: {
+    entry: FeedEntry;
+    post?: PostTableRecord;
+  }) => string | undefined,
+  dropped: () => void
+) => {
+  const slice = -(windowSize - 1);
+  return (entry: PostWithIndex) => {
+    const postUri = getPostUrl(entry);
+    const post = loadedPosts[postUri];
+    const key = getKey({ entry: entry.post, post });
+    if (key == null) return;
+    const toRemoveFromSliceIndex = buffer
+      .slice(slice)
+      .findIndex((bufferEntry) => {
+        const bufferPostUri = getPostUrl(bufferEntry);
+        const bufferPost = loadedPosts[bufferPostUri];
+        return key === getKey({ entry: bufferEntry.post, post: bufferPost });
+      });
+    if (toRemoveFromSliceIndex !== -1) {
+      const toRemoveIndex =
+        Math.max(buffer.length + slice, 0) + toRemoveFromSliceIndex;
+      const removedPost = buffer[toRemoveIndex];
+      droppedPosts.push(removedPost);
+      dropped();
+      buffer.splice(toRemoveIndex, 1);
+    }
+  };
+};
+
+function* filterRepeatedContent(
+  gen: Generator<PostWithIndex>,
+  loadedPosts: Record<string, PostTableRecord>,
+  droppedPosts: Array<PostWithIndex>,
+  droppedBecause: {
+    authorReposts: boolean;
+    quotesOfSamePost: boolean;
+    sameExternal: boolean;
+  }
+) {
+  const maxWindowSize = Math.max(
+    SAME_AUTHOR_RETWEET_WINDOW_SIZE,
+    SAME_QUOTED_TWEET_WINDOW_SIZE,
+    SAME_EXTERNAL_WINDOW_SIZE
+  );
+  const buffer: Array<PostWithIndex> = [];
+  const removeRepostsFromAuthor = removeDuplicateFromBuffer(
+    loadedPosts,
+    droppedPosts,
+    buffer,
+    SAME_AUTHOR_RETWEET_WINDOW_SIZE,
+    ({ entry }) => (entry.type === 'repost' ? entry.author : undefined),
+    () => (droppedBecause.authorReposts = true)
+  );
+  const removeQuotesOfSamePost = removeDuplicateFromBuffer(
+    loadedPosts,
+    droppedPosts,
+    buffer,
+    SAME_QUOTED_TWEET_WINDOW_SIZE,
+    ({ post }) => (post?.type === 'post' ? post.quotedPostUri : undefined),
+    () => (droppedBecause.quotesOfSamePost = true)
+  );
+  const removeSameExternal = removeDuplicateFromBuffer(
+    loadedPosts,
+    droppedPosts,
+    buffer,
+    SAME_QUOTED_TWEET_WINDOW_SIZE,
+    ({ post }) => (post?.type === 'post' ? post.externalUri : undefined),
+    () => (droppedBecause.sameExternal = true)
+  );
+  for (const post of gen) {
+    if (buffer.length >= maxWindowSize) {
+      const firstPost = buffer.shift();
+      if (firstPost != null) {
+        yield firstPost;
+      }
+    }
+    removeRepostsFromAuthor(post);
+    removeQuotesOfSamePost(post);
+    removeSameExternal(post);
+    buffer.push(post);
+  }
+}
+
+const filterFeedContentAlpha = async (
+  feedContent: Array<{ indexedAt: string; post: PostTableRecord }>,
+  following: FollowingRecord,
+  muteWords: Array<string>,
+  muteRetweetsFrom: Set<string>,
+  filterRepliesToFollowed: boolean,
+  limit: number
+): Promise<{
+  feed: Array<PostWithIndex>;
+  droppedPosts: Array<PostWithIndex>;
+}> => {
+  const followingDids = new Set<string>();
+  Object.keys(following.following).forEach((did) => followingDids.add(did));
+  const loadedPosts = await loadPosts(
+    feedContent,
+    followingDids,
+    filterRepliesToFollowed
+  );
+
+  const droppedPosts: Array<PostWithIndex> = [];
+  const droppedBecause = {
+    authorReposts: false,
+    quotesOfSamePost: false,
+    sameExternal: false,
+  };
+  const postsGenerator = arrayGenerator(feedContent);
+  const withoutMutedPosts = filterMutedPosts(
+    muteWords,
+    muteRetweetsFrom,
+    filterRepliesToFollowed,
+    followingDids,
+    loadedPosts,
+    postsGenerator
+  );
+  const withoutRetweetStorms = filterRepeatedContent(
+    withoutMutedPosts,
+    loadedPosts,
+    droppedPosts,
+    droppedBecause
+  );
+
+  const filteredFeedContent: Array<PostWithIndex> = [];
+  const seenPosts = new Set<string>();
+  for (const feedEntry of withoutRetweetStorms) {
+    if (filteredFeedContent.length > limit) {
+      break;
+    }
+    const postUri = getPostUrl(feedEntry);
+    // Remove posts of the same post so we only show the earliest one
+    if (seenPosts.has(postUri)) {
+      const existingIndex = filteredFeedContent.findIndex((feedEntry) => {
+        return getPostUrl(feedEntry) === postUri;
+      });
+      if (existingIndex != -1) {
+        filteredFeedContent.splice(existingIndex, 1);
+      }
+    }
+    seenPosts.add(postUri);
+
+    filteredFeedContent.push(feedEntry);
+  }
+  if (droppedBecause.authorReposts) {
+    filteredFeedContent.unshift({
+      indexedAt: '',
+      post: {
+        type: 'post',
+        uri: 'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3knkq22pls22r',
+      } as FeedEntry,
+    });
+  }
+  if (droppedBecause.quotesOfSamePost) {
+    filteredFeedContent.unshift({
+      indexedAt: '',
+      post: {
+        type: 'post',
+        uri: 'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3knkq3xzur22n',
+      } as FeedEntry,
+    });
+  }
+  if (droppedBecause.sameExternal) {
+    filteredFeedContent.unshift({
+      indexedAt: '',
+      post: {
+        type: 'post',
+        uri: 'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3knkq5rlu4k2w',
+      } as FeedEntry,
+    });
+  }
+  return { feed: filteredFeedContent, droppedPosts };
+};
+
 const fetchKikorangi = async (
   limit?: number,
   cursor?: string
@@ -487,6 +720,12 @@ export const rawHandler = async (
   if (limit == null || limit <= 0) {
     limit = 30;
   }
+  // const { requesterDid, cursor, feed, limit } = {
+  //   requesterDid: 'did:plc:crngjmsdh3zpuhmd5gtgwx6q',
+  //   cursor: undefined,
+  //   feed: process.env.DROPPED_POSTS_FEED_URL,
+  //   limit: 30,
+  // };
   console.log({ requesterDid, cursor, feed, limit });
 
   if (
@@ -572,12 +811,13 @@ export const rawHandler = async (
   );
 
   const filterResult = await (isBeta
-    ? filterFeedContentBeta(
+    ? filterFeedContentAlpha(
         loadedPosts,
         following,
         activeMuteWords,
         muteRetweetsFrom,
-        isFollowerBased
+        isFollowerBased,
+        limit
       )
     : filterFeedContent(
         loadedPosts,
@@ -592,57 +832,20 @@ export const rawHandler = async (
   if (isKikoragi) {
     nextCursor = sourceCursor;
   } else if (isBeta) {
-    const feedWithRemovedRetweets: typeof filteredFeedContent = [];
-    const droppedPosts: typeof filteredFeedContent = [];
-    let addedNotificationPost = false;
-    const window: typeof filteredFeedContent = [];
-    for (const post of filteredFeedContent) {
-      if (feedWithRemovedRetweets.length > limit) {
-        break;
-      }
-      if (window.length >= WINDOW_SIZE) {
-        const firstPost = window.shift();
-        if (firstPost != null) {
-          feedWithRemovedRetweets.push(firstPost);
-        }
-      }
-      if (post.post.type === 'repost') {
-        const toRemoveIndex = window.findIndex(
-          ({ post: postInWindow }) =>
-            post.post.author === postInWindow.author &&
-            postInWindow.type === 'repost'
-        );
-        if (toRemoveIndex !== -1) {
-          const removedPost = window[toRemoveIndex];
-          droppedPosts.push(removedPost);
-          window.splice(toRemoveIndex, 1);
-
-          if (!addedNotificationPost) {
-            feedWithRemovedRetweets.unshift({
-              indexedAt: '',
-              post: {
-                type: 'post',
-                uri: REPOSTS_DROPPED_POST,
-              } as FeedEntry,
-            });
-            addedNotificationPost = true;
-          }
-        }
-      }
-      window.push(post);
-    }
-    feedWithRemovedRetweets.push(...window);
-    filteredFeedContent = feedWithRemovedRetweets;
     const nextPost = filteredFeedContent[limit];
-    filteredFeedContent = filteredFeedContent.slice(0, limit);
-    if (nextPost != null) {
+    if (nextPost == null) {
+      filteredFeedContent.push({
+        post: {
+          uri: NO_MORE_POSTS_POST,
+          type: 'post',
+        } as FeedEntry,
+      });
+    } else {
       nextCursor = `v2|${nextPost.indexedAt}|${nextPost.post.uri}`;
+      filteredFeedContent = filteredFeedContent.slice(0, limit);
     }
     if (feed === process.env.DROPPED_POSTS_FEED_URL) {
-      filteredFeedContent = [
-        ...droppedPosts,
-        // ...filterResult.droppedPosts,
-      ].sort((a, b) => {
+      filteredFeedContent = [...filterResult.droppedPosts].sort((a, b) => {
         if (a.post.createdAt < b.post.createdAt) return 1;
         if (a.post.createdAt > b.post.createdAt) return -1;
         return 0;
