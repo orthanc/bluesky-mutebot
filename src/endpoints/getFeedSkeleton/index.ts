@@ -28,6 +28,8 @@ const NO_MORE_POSTS_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kbhiodpr4m2d';
 const REPOSTS_DROPPED_POST =
   'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kmrm4hqefm2s';
+const SHUTDOWN_POST =
+  'at://did:plc:k626emd4xi4h3wxpd44s4wpk/app.bsky.feed.post/3kty2yh5tct2i';
 
 const SAME_AUTHOR_RETWEET_WINDOW_SIZE = 3;
 const SAME_QUOTED_TWEET_WINDOW_SIZE = 5;
@@ -868,17 +870,20 @@ export const rawHandler = async (
   return {
     statusCode: 200,
     body: JSON.stringify({
-      feed: filteredFeedContent.map(({ post }) =>
-        post.type === 'post'
-          ? { post: post.uri }
-          : {
-              post: post.repostedPostUri,
-              reason: {
-                $type: 'app.bsky.feed.defs#skeletonReasonRepost',
-                repost: post.uri,
-              },
-            }
-      ),
+      feed: [
+        { post: SHUTDOWN_POST },
+        ...filteredFeedContent.map(({ post }) =>
+          post.type === 'post'
+            ? { post: post.uri }
+            : {
+                post: post.repostedPostUri,
+                reason: {
+                  $type: 'app.bsky.feed.defs#skeletonReasonRepost',
+                  repost: post.uri,
+                },
+              }
+        ),
+      ],
       cursor: nextCursor,
     }),
     headers: {
