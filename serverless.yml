@@ -61,9 +61,6 @@ custom:
   blueskyAuth:
     identifier: ${ssm:/bluesky-feeds/${self:provider.stage}/service/identifier}
     password: ${ssm:/bluesky-feeds/${self:provider.stage}/service/password}
-  followingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
-  betaFollowingFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/beta-following-feed-url}
-  kikorangiFeedUrl: ${ssm:/bluesky-feeds/${self:provider.stage}/kikorangi-feed-url}
   ssmEnvironmentBaseArn: 'arn:aws:ssm:${aws:region}:${aws:accountId}:parameter/bluesky-feeds/${self:provider.stage}'
   enablePolling:
     development: false
@@ -197,9 +194,10 @@ functions:
     events:
      - httpApi: GET /xrpc/app.bsky.feed.getFeedSkeleton
     environment:
-      FOLLOWING_FEED_URL: ${self:custom.followingFeedUrl}
-      BETA_FOLLOWING_FEED_URL: ${self:custom.betaFollowingFeedUrl}
-      KIKORANGI_FEED_URL: ${self:custom.kikorangiFeedUrl}
+      FOLLOWING_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/following-feed-url}
+      BETA_FOLLOWING_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/beta-following-feed-url}
+      KIKORANGI_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/kikorangi-feed-url}
+      DROPPED_POSTS_FEED_URL: ${ssm:/bluesky-feeds/${self:provider.stage}/dropped-posts-feed-url}
       BLUESKY_SERVICE_PASSWORD: ${self:custom.blueskyAuth.password}
     iamRoleStatements:
       - Effect: "Allow"
